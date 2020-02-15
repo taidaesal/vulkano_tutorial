@@ -67,6 +67,7 @@ Replace the existing mvp_buffer declaration with the following code. Also rememb
 let mut vp_buffer = CpuAccessibleBuffer::from_data(
     device.clone(),
     BufferUsage::all(),
+    false,
     deferred_vert::ty::VP_Data {
         view: vp.view.into(),
         projection: vp.projection.into(),
@@ -76,19 +77,13 @@ let mut vp_buffer = CpuAccessibleBuffer::from_data(
 
 ```rust
 if recreate_swapchain {
-    let dimensions = if let Some(dimensions) = window.get_inner_size() {
-        let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
-        vp.projection = perspective(dimensions.0 as f32 / dimensions.1 as f32, 180.0, 0.01, 100.0);
-        [dimensions.0, dimensions.1]
-    } else {
-        return;
-    };
-
-    let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
+    let dimensions: [u32; 2] = surface.window().inner_size().into();
+    let (new_swapchain, new_images) = match swapchain.recreate_with_dimensions(dimensions) {
         Ok(r) => r,
-        Err(SwapchainCreationError::UnsupportedDimensions) => continue,
-        Err(err) => panic!("{:?}", err)
+        Err(SwapchainCreationError::UnsupportedDimensions) => return,
+        Err(e) => panic!("Failed to recreate swapchain: {:?}", e)
     };
+    vp.projection = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.01, 100.0);
 
     swapchain = new_swapchain;
     let (new_framebuffers, new_color_buffer, new_normal_buffer) = window_size_dependent_setup(device.clone(), &new_images, render_pass.clone(), &mut dynamic_state);
@@ -99,11 +94,17 @@ if recreate_swapchain {
     vp_buffer = CpuAccessibleBuffer::from_data(
         device.clone(),
         BufferUsage::all(),
+        false,
         deferred_vert::ty::VP_Data {
             view: vp.view.into(),
             projection: vp.projection.into(),
         }
     ).unwrap();
+
+    let deferred_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
+    vp_set = Arc::new(PersistentDescriptorSet::start(deferred_layout.clone())
+        .add_buffer(vp_buffer.clone()).unwrap()
+        .build().unwrap());
 
     recreate_swapchain = false;
 }
@@ -111,7 +112,8 @@ if recreate_swapchain {
 
 We can remove our mvp sub-buffer declaration code and update the descriptor set to be:
 ```rust
-let deferred_set = Arc::new(PersistentDescriptorSet::start(deferred_pipeline.clone(), 0)
+let deferred_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
+let deferred_set = Arc::new(PersistentDescriptorSet::start(deferred_layout.clone())
     .add_buffer(vp_buffer.clone()).unwrap()
     .build().unwrap());
 ```
@@ -160,7 +162,8 @@ Right now we re-declare `deferred_set` every frame. This was fine when the data 
 
 Let's move our initial declaration to just above our main rendering loop. While we're at it, let's help keep the code readable by re-naming `deferred_set` to something more descriptive, like `vp_set`
 ```rust
-let mut vp_set = Arc::new(PersistentDescriptorSet::start(deferred_pipeline.clone(), 0)
+let deferred_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
+let mut vp_set = Arc::new(PersistentDescriptorSet::start(deferred_layout.clone())
     .add_buffer(vp_buffer.clone()).unwrap()
     .build().unwrap());
 ```
@@ -170,7 +173,8 @@ We can re-create it right after we recreate our `vp_buffer` in the swapchain rec
 if recreate_swapchain {
     // ...
 
-    vp_set = Arc::new(PersistentDescriptorSet::start(deferred_pipeline.clone(), 0)
+    let deferred_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
+    vp_set = Arc::new(PersistentDescriptorSet::start(deferred_layout.clone())
         .add_buffer(vp_buffer.clone()).unwrap()
         .build().unwrap());
 
@@ -207,12 +211,13 @@ let model_uniform_subbuffer = {
     model_uniform_buffer.next(uniform_data).unwrap()
 };
 
-let model_set = Arc::new(PersistentDescriptorSet::start(deferred_pipeline.clone(), 1)
+let deferred_layout_model = deferred_pipeline.descriptor_set_layout(1).unwrap();
+let model_set = Arc::new(PersistentDescriptorSet::start(deferred_layout_model.clone())
     .add_buffer(model_uniform_subbuffer.clone()).unwrap()
     .build().unwrap());
 ```
 
-The only real thing to notice is that the second argument is `1` for the first time in this lesson series.
+The only real thing to notice is that we used `1` as the argument for the descriptor_set_layout for the first time in this lesson series.
 
 #### Updating our Draw Command
 
