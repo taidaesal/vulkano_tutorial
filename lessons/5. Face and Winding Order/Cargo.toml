@@ -1,0 +1,12 @@
+[package]
+name = "face_lesson"
+version = "0.1.0"
+authors = ["taidaesal"]
+edition = "2018"
+
+[dependencies]
+vulkano = "0.16.0"
+winit = "0.19"
+vulkano-win = "0.16.0"
+vulkano-shaders = "0.16.0"
+nalgebra-glm = "0.5.0"
