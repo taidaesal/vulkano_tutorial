@@ -14,7 +14,7 @@ Okay, that's great and all but why should we care? What winding lets us do is fi
 
 Okay, a simple example is below. Let's use the same code as we did for our depth testing but modify it a little bit. Let's set it so that the black triangle uses counter-clockwise winding while the white triangle uses clockwise winding.
 ```rust
-let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), [
+let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, [
     Vertex { position: [-0.5, 0.5, -0.5], color: [0.0, 0.0, 0.0] },
     Vertex { position: [0.5, 0.5, -0.5], color: [0.0, 0.0, 0.0] },
     Vertex { position: [0.0, -0.5, -0.5], color: [0.0, 0.0, 0.0] },
@@ -50,7 +50,7 @@ let pipeline = Arc::new(GraphicsPipeline::start()
 
 `.cull_mode_back()` Is the code which actually turns on our culling mode. And, yes, there is an option to call the front face instead.
 
-Run the code and we should see the white triangle has disappeared, exactly as expected. 
+Run the code and we should see the white triangle has disappeared, exactly as expected.
 
 ![an image showing that only the triangle with the correct winding remains](../doc_imgs/5/culled_triangle.png)
 
