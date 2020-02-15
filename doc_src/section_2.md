@@ -125,7 +125,7 @@ In understanding how to read this, keep in mind that each function call gets cal
 Before we can go about using data to draw anything we need to store that data somewhere our graphics hardware can see it. We do this using buffers.
 
 ```rust
-let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), [
+let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, [
     Vertex { position: [-0.5, 0.5, 0.0] },
     Vertex { position: [0.5, 0.5, 0.0] },
     Vertex { position: [0.0, -0.5, 0.0] }
@@ -228,7 +228,7 @@ In the fragment shader we have added a line to accept our new input, `layout(loc
 The update to the buffer is very straightforward and I don't think requires any particular explanation.
 
 ```rust
-let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), [
+let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, [
     Vertex { position: [-0.5, 0.5, 0.0], color: [1.0, 0.0, 0.0] },
     Vertex { position: [0.5, 0.5, 0.0], color: [0.0, 1.0, 0.0] },
     Vertex { position: [0.0, -0.5, 0.0], color: [0.0, 0.0, 1.0] }
