@@ -7,7 +7,7 @@ We're four lessons into this thing but we've been cheating the whole time. We ha
 Let's change our code so we have two triangles with one being white, and the other black. For the sake of this example we'll get rid of the translation/rotation code from last time and replace the model matrix with the simple identity matrix.
 
 ```rust
-let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), [
+let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, [
     Vertex { position: [-0.5, 0.5, -0.5], color: [0.0, 0.0, 0.0] },
     Vertex { position: [0.5, 0.5, -0.5], color: [0.0, 0.0, 0.0] },
     Vertex { position: [0.0, -0.5, -0.5], color: [0.0, 0.0, 0.0] },
@@ -22,7 +22,7 @@ Pretty simple; we have two triangles, one behind the other. The one in front is 
 
 ![two triangles with the one that should be behind the other actually rendered in front of it](../doc_imgs/4/triangles_with_no_depth.png)
 
-That...doesn't look right. The white triangle is supposed to be behind the black one but it's the other way around, what's going on? What we're lacking is *depth testing*, the mechanism where vulkan checks what depth each vertex is at. In other words, with depth testing enabled our graphics hardware will be able to draw back-to-front with the furthest away vertices being drawn first. Right now, the vertices are being drawn in the order they are received, which is why we currently have this problem. 
+That...doesn't look right. The white triangle is supposed to be behind the black one but it's the other way around, what's going on? What we're lacking is *depth testing*, the mechanism where vulkan checks what depth each vertex is at. In other words, with depth testing enabled our graphics hardware will be able to draw back-to-front with the furthest away vertices being drawn first. Right now, the vertices are being drawn in the order they are received, which is why we currently have this problem.
 
 Luckily for us, Vulkan makes it very easy to turn on depth testing. Let's take a look at that now.
 
@@ -120,7 +120,7 @@ let clear_values = vec![[0.0, 0.68, 1.0, 1.0].into(), 1f32.into()];
 Two things to notice here:
  - because our depth buffer is in a format that takes a single value per vertex rather than an array we can get away with using `1f32` as the clear value rather than a color vector
  - the clear values **must** be listed in the same order as the buffer attachments. This is an easy thing to get wrong, so just keep it in mind.
- 
+
 #### Running our new code
 
 Re-run our code and you should see that everything is now in the expected order with the black triangle in front of the white one.
@@ -129,4 +129,4 @@ Re-run our code and you should see that everything is now in the expected order 
 
 Not the most exciting image, I know, but now that we have depth sorted out we are ready to start moving on to more complicated scenes.
 
-In this lesson you also got your first taste of using multiple attachments, something which will be very useful in future lessons. 
+In this lesson you also got your first taste of using multiple attachments, something which will be very useful in future lessons.

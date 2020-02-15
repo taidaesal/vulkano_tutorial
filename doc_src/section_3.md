@@ -160,12 +160,14 @@ Right now we aren't doing anything special with our actual MVP data. Instead, we
 When we created our new shaders we had a section of code that looked like `set = 0, binding = 0`. This refers to a `DescriptorSet` and is what we'll declare next. Place the following code right after our `uniform_buffer_subbuffer` declaration.
 
 ```rust
-let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
-    .add_buffer(uniform_buffer_subbuffer).unwrap()
-    .build().unwrap()
+let layout = pipeline.descriptor_set_layout(0).unwrap();
+let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
+  .add_buffer(uniform_buffer_subbuffer).unwrap()
+  .build().unwrap()
 );
 ```
-the second argument in `start(pipeline.clone(), 0)` lets us set the index value of our set. We can have multiple sets and multiple buffers per set. `layout(set = 0, binding = 0)` means that Vulkan wants `MVP_Data` to be the first buffer of the first descriptor set.
+
+For descriptor sets we need to know two things: the graphics pipeline the set is for and the index of the set. The first line here is how we find that information prior to creating our descriptor set. `pipeline` is, of course, the graphics pipeline we want to use and the `0` we pass to `.descriptor_set_layout()` is the set index we're requesting. This argument corresponds to the `set = 0` part of our uniform `layout` in the shader. We can have multiple sets and multiple buffers per set. `layout(set = 0, binding = 0)` means that Vulkan wants `MVP_Data` to be the first buffer of the first descriptor set.
 
 #### Update the draw command
 
@@ -226,7 +228,8 @@ let second_uniform_subbuffer = {
 ```
 
 ```rust
-let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
+let layout = pipeline.descriptor_set_layout(0).unwrap();
+let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
     .add_buffer(uniform_buffer_subbuffer).unwrap()
     .add_buffer(second_uniform_subbuffer).unwrap()
     .build().unwrap()
@@ -246,7 +249,7 @@ There is one difference that is probably immediately apparent to you, our triang
 Let's start with the easiest, yet most boring matrix, the projection matrix. First we need to update our source data though.
 
 ```rust
-let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), [
+let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, [
     Vertex { position: [-0.5, 0.5, -0.5], color: [1.0, 0.0, 0.0] },
     Vertex { position: [0.5, 0.5, -0.5], color: [0.0, 1.0, 0.0] },
     Vertex { position: [0.0, -0.5, -0.5], color: [0.0, 0.0, 1.0] }
@@ -378,19 +381,15 @@ mvp.view = look_at(&vec3(0.0, 0.0, 0.01), &vec3(0.0, 0.0, 0.0), &vec3(0.0, -1.0,
 Now let's deal with the projection matrix. There are two places where we find the screen size, let's add the following code to both:
 
 ```rust
-let dimensions = if let Some(dimensions) = window.get_inner_size() {
-    let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
-    mvp.projection = perspective(dimensions.0 as f32 / dimensions.1 as f32, 180.0, 0.01, 100.0);
-    [dimensions.0, dimensions.1]
-} else {
-    return;
-};
+let dimensions: [u32; 2] = surface.window().inner_size().into();
+mvp.projection = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.01, 100.0);
+
 ```
 
 For our model matrix let's first start by recreating the initial scene and moving on from there. First, return the model vertex data to the way it was before, with each vertex being at `0.0` on the z-axis
 
 ```rust
-let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), [
+let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false [
     Vertex { position: [-0.5, 0.5, 0.0], color: [1.0, 0.0, 0.0] },
     Vertex { position: [0.5, 0.5, 0.0], color: [0.0, 1.0, 0.0] },
     Vertex { position: [0.0, -0.5, 0.0], color: [0.0, 0.0, 1.0] }
