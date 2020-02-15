@@ -176,26 +176,19 @@ let (mut framebuffers, mut color_buffer, mut normal_buffer) = window_size_depend
 
 ```rust
 if recreate_swapchain {
-    let dimensions = if let Some(dimensions) = window.get_inner_size() {
-        let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
-        mvp.projection = perspective(dimensions.0 as f32 / dimensions.1 as f32, 180.0, 0.01, 100.0);
-        [dimensions.0, dimensions.1]
-    } else {
-        return;
-    };
-
-    let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
+    let dimensions: [u32; 2] = surface.window().inner_size().into();
+    let (new_swapchain, new_images) = match swapchain.recreate_with_dimensions(dimensions) {
         Ok(r) => r,
-        Err(SwapchainCreationError::UnsupportedDimensions) => continue,
-        Err(err) => panic!("{:?}", err)
+        Err(SwapchainCreationError::UnsupportedDimensions) => return,
+        Err(e) => panic!("Failed to recreate swapchain: {:?}", e)
     };
+    mvp.projection = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.01, 100.0);
 
     swapchain = new_swapchain;
     let (new_framebuffers, new_color_buffer, new_normal_buffer) = window_size_dependent_setup(device.clone(), &new_images, render_pass.clone(), &mut dynamic_state);
     framebuffers = new_framebuffers;
     color_buffer = new_color_buffer;
     normal_buffer = new_normal_buffer;
-
     recreate_swapchain = false;
 }
 ```
@@ -222,14 +215,14 @@ mod deferred_frag {
 mod lighting_vert {
     vulkano_shaders::shader!{
         ty: "vertex",
-        path: directional.vert
+        path: lighting.vert
     }
 }
 
 mod lighting_frag {
     vulkano_shaders::shader!{
         ty: "fragment",
-        path: directional.frag
+        path: lighting.frag
     }
 }
 
@@ -277,7 +270,8 @@ Our second pipeline is almost identical to the first. The only real change is th
 
 First, for the sake of our initial example, let's comment out our `ambient_uniform_subbuffer` and `directional_uniform_subbuffer` variables and only use our main `uniform_buffer_subbuffer`.
 ```rust
-let deferred_set = Arc::new(PersistentDescriptorSet::start(deferred_pipeline.clone(), 0)
+let deferred_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
+let deferred_set = Arc::new(PersistentDescriptorSet::start(deferred_layout.clone())
     .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
     .build().unwrap());
 ```
@@ -285,10 +279,11 @@ Nothing too notable here since we've seen this exact code in earlier lessons. Ho
 
 The second set is also simple but it does show off another important new wrinkle in how Vulkan works.
 ```rust
-let lighting_set = Arc::new(PersistentDescriptorSet::start(lighting_pipeline.clone(), 0)
+let lighting_layout = lighting_pipeline.descriptor_set_layout(0).unwrap();
+let lighting_set = Arc::new(PersistentDescriptorSet::start(lighting_layout.clone())
     .add_image(color_buffer.clone()).unwrap()
     .add_image(normal_buffer.clone()).unwrap()
-    .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
+    .add_buffer(uniform_buffer_subbuffer).unwrap()
     .build().unwrap());
 ```
 As you can see, renderpass attachments which are used as inputs to a sub-pass are given to that sub-pass as a uniform set. The order we add these attachment images to our descriptor set *does* matter, but not in the way you might expect. In the section on shaders we'll see how this looks on the consumer's side and revisit the top of order.
@@ -447,7 +442,8 @@ The `layout` section looks mostly similar to other uniform inputs we've seen bef
 
 For an example of this, let's say we created our descriptor set in the other order.
 ```rust
-let lighting_set = Arc::new(PersistentDescriptorSet::start(lighting_pipeline.clone(), 0)
+let lighting_layout = lighting_pipeline.descriptor_set_layout(0).unwrap();
+let lighting_set = Arc::new(PersistentDescriptorSet::start(lighting_layout.clone())
     .add_image(normal_buffer.clone()).unwrap()    
     .add_image(color_buffer.clone()).unwrap()
     .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
@@ -465,6 +461,18 @@ This would work, but I find it ugly and confusing, so I try to list the attachme
 Lastly, let's look at `f_color = vec4(subpassLoad(u_color).rgb, 1.0);`
 
 Since we can't just use our input uniforms as a regular variable, we need to use the special `subpassLoad` function to get data from them. The `.rgb` at the end is just a way of destructuring the vector and is the same to calling `.xyz`. The reason we use `.rgb` is that it helps underscore the fact that this is color data.
+
+Let's add back in the sub-buffers we commented out earlier in the lesson.
+```rust
+let lighting_layout = lighting_pipeline.descriptor_set_layout(0).unwrap();
+let lighting_set = Arc::new(PersistentDescriptorSet::start(lighting_layout.clone())
+    .add_image(color_buffer.clone()).unwrap()
+    .add_image(normal_buffer.clone()).unwrap()
+    .add_buffer(uniform_buffer_subbuffer).unwrap()
+    .add_buffer(ambient_uniform_subbuffer).unwrap()
+    .add_buffer(directional_uniform_subbuffer).unwrap()
+    .build().unwrap());
+```
 
 #### Running the Code
 

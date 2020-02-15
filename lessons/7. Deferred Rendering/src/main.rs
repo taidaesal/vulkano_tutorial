@@ -84,7 +84,6 @@ fn main() {
     };
 
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-    println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
     let event_loop = EventLoop::new();
     let surface = WindowBuilder::new().build_vk_surface(&event_loop, instance.clone()).unwrap();
@@ -405,7 +404,6 @@ fn main() {
             _ => ()
         }
     });
-
 }
 
 /// This method is called once during initialization, then again whenever the window is resized

@@ -250,16 +250,19 @@ let directional_buffer = CpuBufferPool::<directional_frag::ty::Directional_Light
 #### Updated Descriptor Sets
 
 ```rust
-let deferred_set = Arc::new(PersistentDescriptorSet::start(deferred_pipeline.clone(), 0)
+let deferred_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
+let deferred_set = Arc::new(PersistentDescriptorSet::start(deferred_layout.clone())
     .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
     .build().unwrap());
-let directional_set = Arc::new(PersistentDescriptorSet::start(directional_pipeline.clone(), 0)
+let directional_layout = directional_pipeline.descriptor_set_layout(0).unwrap();
+let directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clone())
     .add_image(color_buffer.clone()).unwrap()
     .add_image(normal_buffer.clone()).unwrap()
     .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
     .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
     .build().unwrap());
-let ambient_set = Arc::new(PersistentDescriptorSet::start(ambient_pipeline.clone(), 0)
+let ambient_layout = ambient_pipeline.descriptor_set_layout(0).unwrap();
+let ambient_set = Arc::new(PersistentDescriptorSet::start(ambient_layout.clone())
     .add_image(color_buffer.clone()).unwrap()
     .add_image(normal_buffer.clone()).unwrap()
     .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
@@ -349,7 +352,8 @@ The type of `commands` is `AutoCommandBufferBuilder` so we can keep chaining ren
 Next, we declare our directional data sub-buffer for our first directional input.
 ```rust
 let mut directional_uniform_subbuffer = generate_directional_buffer(&directional_buffer, &directional_light_r);
-let mut directional_set = Arc::new(PersistentDescriptorSet::start(directional_pipeline.clone(), 0)
+let directional_layout = directional_pipeline.descriptor_set_layout(0).unwrap();
+let mut directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clone())
     .add_image(color_buffer.clone()).unwrap()
     .add_image(normal_buffer.clone()).unwrap()
     .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
@@ -368,7 +372,7 @@ commands = commands
 That will do for the first directional light and now we can just do the same thing for the other two lights.
 ```rust
 directional_uniform_subbuffer = generate_directional_buffer(&directional_buffer, &directional_light_g);
-directional_set = Arc::new(PersistentDescriptorSet::start(directional_pipeline.clone(), 0)
+directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clone())
     .add_image(color_buffer.clone()).unwrap()
     .add_image(normal_buffer.clone()).unwrap()
     .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
@@ -379,7 +383,7 @@ commands = commands
     .unwrap();
 
 directional_uniform_subbuffer = generate_directional_buffer(&directional_buffer, &directional_light_b);
-directional_set = Arc::new(PersistentDescriptorSet::start(directional_pipeline.clone(), 0)
+directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clone())
     .add_image(color_buffer.clone()).unwrap()
     .add_image(normal_buffer.clone()).unwrap()
     .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
