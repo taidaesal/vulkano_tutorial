@@ -1,12 +1,12 @@
 [package]
 name = "uniforms_lesson"
-version = "0.1.0"
+version = "0.17.0"
 authors = ["taidaesal"]
 edition = "2018"
 
 [dependencies]
 vulkano = "0.17.0"
-winit = "0.21"
+winit = "0.21.0"
 vulkano-win = "0.17.0"
 vulkano-shaders = "0.17.0"
 nalgebra-glm = "0.5.0"

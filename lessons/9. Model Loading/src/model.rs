@@ -1,3 +1,7 @@
+// Copyright (c) 2020 taidaesal
+// Licensed under the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>
+
 #![allow(dead_code)]
 use super::obj_loader::{Loader, NormalVertex};
 

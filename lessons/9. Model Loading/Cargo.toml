@@ -1,12 +1,12 @@
 [package]
 name = "model_loading_lesson"
-version = "0.1.0"
+version = "0.17.0"
 authors = ["taidaesal"]
 edition = "2018"
 
 [dependencies]
-vulkano = "0.16.0"
-winit = "0.19"
-vulkano-win = "0.16.0"
-vulkano-shaders = "0.16.0"
+vulkano = "0.17.0"
+winit = "0.21"
+vulkano-win = "0.17.0"
+vulkano-shaders = "0.17.0"
 nalgebra-glm = "0.5.0"

@@ -85,6 +85,7 @@ The second line replaces our call to setting the `mvp.model` value like we have 
 let vertex_buffer = CpuAccessibleBuffer::from_iter(
     device.clone(),
     BufferUsage::all(),
+    false,
     cube.data().iter().cloned()).unwrap();
 ```
 
@@ -130,7 +131,7 @@ let mut cube = Model::new("./src/models/suzanne.obj").build();
 cube.translate(vec3(0.0, 0.0, -1.5));
 ```
 
-![a picture of suzanne, showing apparent transparency](../doc_imgs/9/suzanne_1.png)
+![a picture of suzanne showing apparent transparency](../doc_imgs/9/suzanne_1.png)
 
 Well that's kind of horrifying. What's gone wrong?
 
@@ -178,7 +179,6 @@ Remember to run the `impl_vertex!` macro for `DummyVertex`.
 ```rust
 vulkano::impl_vertex!(DummyVertex, position);
 ```
-
 
 #### Update shaders
 
@@ -261,6 +261,7 @@ To be able to use our square of dummy data, we need to put it inside a `CpuAcces
 let dummy_verts = CpuAccessibleBuffer::from_iter(
     device.clone(),
     BufferUsage::all(),
+    false,
     DummyVertex::list().iter().cloned()
 ).unwrap();
 ```
@@ -270,7 +271,8 @@ let dummy_verts = CpuAccessibleBuffer::from_iter(
 We can remove `uniform_buffer_subbuffer` from `ambient_set` as well as `directional_set`
 
 ```rust
-let ambient_set = Arc::new(PersistentDescriptorSet::start(ambient_pipeline.clone(), 0)
+let ambient_layout = ambient_pipeline.descriptor_set_layout(0).unwrap();
+let ambient_set = Arc::new(PersistentDescriptorSet::start(ambient_layout.clone())
     .add_image(color_buffer.clone()).unwrap()
     .add_image(normal_buffer.clone()).unwrap()
     .add_buffer(ambient_uniform_subbuffer.clone()).unwrap()
@@ -278,7 +280,8 @@ let ambient_set = Arc::new(PersistentDescriptorSet::start(ambient_pipeline.clone
 ```
 
 ```rust
-let mut directional_set = Arc::new(PersistentDescriptorSet::start(directional_pipeline.clone(), 0)
+let directional_layout = directional_pipeline.descriptor_set_layout(0).unwrap();
+let mut directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clone())
     .add_image(color_buffer.clone()).unwrap()
     .add_image(normal_buffer.clone()).unwrap()
     .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
