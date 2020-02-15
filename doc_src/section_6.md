@@ -35,7 +35,7 @@ mvp.model = translate(&identity(), &vec3(0.0, 0.0, -2.5));
 Next let's update our vertex buffer to output all the data we need for our cube. This is actually a really, really poor way of handling anything more complicated than a couple triangles but I don't want to get into model handling in this lesson so we'll just do it the hacky way.
 
 ```rust
-let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), [
+let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, [
     // front face
     Vertex { position: [-1.000000, -1.000000, 1.000000], normal: [0.0000, 0.0000, 1.0000], color: [1.0, 0.35, 0.137]},
     Vertex { position: [-1.000000, 1.000000, 1.000000], normal: [0.0000, 0.0000, 1.0000], color: [1.0, 0.35, 0.137]},
@@ -238,7 +238,8 @@ Nothing dramatic here. We're just creating an instance of `fs::ty::Ambient_Data`
 The last thing we need to do is update our set descriptor. You're probably tired of hearing it by now, but mind the order! Our ambient light information is our second uniform so it needs to be attached to the set *after* our MVP uniform.
 
 ```rust
-let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
+let layout = pipeline.descriptor_set_layout(0).unwrap();
+let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
     .add_buffer(uniform_buffer_subbuffer).unwrap()
     .add_buffer(ambient_uniform_subbuffer).unwrap()
     .build().unwrap()
@@ -396,7 +397,8 @@ let directional_uniform_subbuffer = {
 ```
 
 ```rust
-let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
+let layout = pipeline.descriptor_set_layout(0).unwrap();
+let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
     .add_buffer(uniform_buffer_subbuffer).unwrap()
     .add_buffer(ambient_uniform_subbuffer).unwrap()
     .add_buffer(directional_uniform_subbuffer).unwrap()
