@@ -326,3 +326,5 @@ Let's execute the code and see what happens.
 ![picture showing correctly rendered version of Suzanne](../doc_imgs/9/suzanne_2.png)
 
 There's the friendly and slightly pointy monkey we were hoping for. With our new ability to load complex models, we've taken a major step towards our goal of a working rendering system.
+
+[lesson source code](../lessons/9.%20Model%20Loading)

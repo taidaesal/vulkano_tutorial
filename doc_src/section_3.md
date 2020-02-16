@@ -447,3 +447,5 @@ let uniform_buffer_subbuffer = {
 ```
 
 It's not something that can really be captured in a still image but if you run this code you should see a rotating triangle.
+
+[lesson source code](../lessons/3.%20Transformations%20and%20Uniforms)

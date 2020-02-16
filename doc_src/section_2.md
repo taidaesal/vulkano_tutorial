@@ -242,3 +242,5 @@ And that's it, a new input source defined and hooked up to our shaders. At this 
 ![updated triangle with more colors](../doc_imgs/2/colorful_triangle.png)
 
 Much more striking, I think you'll agree. In the next lesson we'll look at how to start manipulating our output to do things like rotate them or move them around.
+
+[lesson source code](../lessons/2.%20Triangle)

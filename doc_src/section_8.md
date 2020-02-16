@@ -412,3 +412,5 @@ That should be the last thing we need to do. Let's compile and run the code and 
 ![image showing the combined lighting effects of three colored lights](../doc_imgs/8/three_lights.png)
 
 Excellent, it looks just like it should. It's been two long lessons, but we've finally seen how to do something we couldn't have done back in lesson 6. You can also see the emerging outline of the general rendering engine that we'll be working on in a few lessons. This process of building up the final scene by running sets of shaders over and over again will be the core of any engine.
+
+[lesson source code](../lessons/8.%20Light%20II)

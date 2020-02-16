@@ -130,3 +130,5 @@ Re-run our code and you should see that everything is now in the expected order 
 Not the most exciting image, I know, but now that we have depth sorted out we are ready to start moving on to more complicated scenes.
 
 In this lesson you also got your first taste of using multiple attachments, something which will be very useful in future lessons.
+
+[lesson source code](../lessons/4.%20Depth)

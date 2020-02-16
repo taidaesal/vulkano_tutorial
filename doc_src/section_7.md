@@ -569,3 +569,5 @@ We've covered a lot of ground in this lesson so I want to provide one more diagr
 On the left we have two *intermediary attachments*. There are named `color` and `normals` inside our Renderpass declaration. The shaders we ran on the first sub-pass output their data to these two attachments.
 
 When we ran our second pass we took the two attachments on the left as an input. We combined the data contained inside them, the base color and the surface normals, to produce a shaded version of the cube input. This final version is output to another attachment which is shown on the right. This final attachment is then shown to the user. All together this process produces a single frame.
+
+[lesson source code](../lessons/7.%20Deferred%20Rendering)

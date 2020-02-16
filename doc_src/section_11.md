@@ -1314,3 +1314,5 @@ Play around a bit on your own. Before we'd have to manually code in a new model 
 #### What Next?
 
 At this point, we've learned most of the "big picture" Vulkan ideas that you need to program in Vulkan effectively. This isn't to say that we've mastered Vulkan; far from it! Rather, by now we've learned to "think in Vulkan" to an extent. Creating swapchains, multi-stage pipelines, shaders, etc are things that are going to be at the core of any Vulkan workflow you might run into in the future. Our task for the rest of the tutorial series is to get better with the tools we've learned thus far and explore how they can be used to produce ever-more-complicated scenes.
+
+[lesson source code](../lessons/11.%20First%20Rendering%20System)
