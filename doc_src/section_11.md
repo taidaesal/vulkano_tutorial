@@ -1,6 +1,6 @@
 # Render System I
 
-After completing 10 lessons in Vulkan let's take stock of where we are. At the start of this series we had a blank `main.rs` and no idea how to make it do graphics stuff. At the end of a lengthy first lesson we had a blank screen that didn't do anything. However, now we have a multi-staged rendering pipeline running three sets of shaders to render models, ambient lighting, and directional lights. That we have not learned everything we might want to know about basic rendering should not take away from appreciating how far we've come to make it to this point.
+After completing 10 lessons in Vulkan let's take stock of where we are. At the start of this series we had a blank `main.rs` and no idea how to make it do anything interesting. At the end of a lengthy first lesson we had a blank screen that didn't do anything. However, now we have a multi-staged rendering pipeline running three sets of shaders to render models, ambient lighting, and directional lights. That we have not learned everything we might want to know about basic rendering should not take away from appreciating how far we've come to make it to this point.
 
 This lesson will serve as a review, of a sort. We won't be learning anything new and we won't even be writing that much new code. Instead, we'll take the code we already have and see if we can't re-work it into a stand-alone rendering system.
 
@@ -198,24 +198,25 @@ Now we reach the first complication, what to do with our `Window` and related co
 ```rust
 fn main() {
 
-    let mut events_loop = EventsLoop::new();
-    let mut system = System::new(&mut events_loop);
+  let event_loop = EventLoop::new();
+  let mut system = System::new(&event_loop);
 
-    loop {
-        let mut done = false;
-        events_loop.poll_events(|ev| {
-            match ev {
-                Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => done = true,
-                //Event::WindowEvent { event: WindowEvent::Resized(_), .. } => recreate_swapchain = true,
-                _ => ()
-            }
-        });
-        if done { return; }
-    }
+  event_loop.run(move |event, _, control_flow| {
+      match event {
+          Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
+              *control_flow = ControlFlow::Exit;
+          },
+          Event::WindowEvent { event: WindowEvent::Resized(_), .. } => {
+          },
+          Event::RedrawEventsCleared => {
+          },
+          _ => ()
+        }
+      });
 }
 ```
 
-We have created our `EventsLoop` object and created an empty main program loop that polls for window close events. If you run this (after also updating `system.rs`) you will see a blank window open that closes when you click the "x" button.
+We have created our `EventLoop` object and created an empty main program loop that polls for window close events. If you run this (after also updating `system.rs`) you will see a blank window open that closes when you click the "x" button.
 
 `system.rs`
 ```rust
@@ -225,7 +226,7 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(events_loop: &mut EventsLoop) -> System {
+    pub fn new(event_loop: &EventLoop) -> System {
         let instance = {
             let extensions = vulkano_win::required_extensions();
             Instance::new(None, &extensions, None).unwrap()
@@ -233,8 +234,7 @@ impl System {
 
         let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
 
-        let surface = WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
-        let window = surface.window();
+        let surface = WindowBuilder::new().build_vk_surface(&event_loop, instance.clone()).unwrap();
 
         System{
             instance,
@@ -243,7 +243,6 @@ impl System {
     }
 }
 ```
-At first glance this isn't anything too unusual about this new code. However, if you took a glance through your existing code you might notice that we don't need `surface` after setup is done, so why are we recording `surface` in our struct instead of `window`? Simple, really: it's easier. To store a variable of a `&Window` type we'd need to add lifetime annotations and that's kind of annoying. We might have to later anyway but for now let's take the simpler of our two options.
 
 #### Devices and Queues
 
@@ -258,7 +257,7 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(events_loop: &mut EventsLoop) -> System {
+    pub fn new(event_loop: &EventLoop) -> System {
         // ...
         let device_ext = DeviceExtensions { khr_swapchain: true, .. DeviceExtensions::none() };
         let (device, mut queues) = Device::new(physical, physical.supported_features(), &device_ext,
@@ -276,79 +275,6 @@ impl System {
 ```
 
 We need to know `device` and `queue` later in the rendering process, but the other variables are safe to allow to go out of scope once initialisation is done.
-
-#### Errors
-
-We've been playing pretty fast-and-loose with the possibility of errors so far. In any real code, scattering `.unwrap()` everywhere is considered very bad practice. Let's create a new error type we can use to return useful information to the calling code.
-
-First, let's create a new file to hold our new error types.
-`system/system_errors.rs`
-```rust
-use std::fmt;
-
-#[derive(Clone)]
-pub enum SystemErrorType {
-    ResizeFailure
-}
-
-#[derive(Clone)]
-pub struct SystemError {
-    err_type: SystemErrorType
-}
-
-impl SystemError {
-    pub fn new(err_type: SystemErrorType) -> SystemError {
-        SystemError{ err_type }
-    }
-}
-
-
-impl fmt::Display for SystemError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let err_msg = match self.err_type {
-            SystemErrorType::ResizeFailure => "Error occurred while resizing swapchain",
-        };
-
-        write!(f, "{}", err_msg)
-    }
-}
-
-impl fmt::Debug for SystemError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let err_msg = match self.err_type {
-            SystemErrorType::ResizeFailure => "Error occurred while resizing swapchain",
-        };
-
-        write!(f, "{}", err_msg)
-    }
-}
-```
-
-We need to make sure to add a `mod` statement to include our new file in the source tree.
-
-`system/mod.rs`
-```rust
-mod system_errors;
-```
-
-To return an error we need to modify the return type of `System::new()` to use the `Result` type.
-
-`system.rs`
-```rust
-impl System {
-    pub fn new(events_loop: &mut EventsLoop) -> Result<System, SystemError>  {
-        // ...
-        Ok(System{
-            instance,
-            surface,
-            device,
-            queue,
-        })
-    }
-}
-```
-
-We'll see how to raise an error in the next sub-section.
 
 #### Swapchain
 
@@ -377,13 +303,13 @@ impl VP {
 }
 
 impl System {
-    pub fn new(events_loop: &mut EventsLoop) -> Result<System, SystemError>  {
+    pub fn new(event_loop: &EventLoop) -> System {
         // ...
         let mut vp = VP::new();
-        Ok(System{
+        System{
             // ...
             vp,
-        })
+        }
     }
 }
 ```
@@ -398,32 +324,25 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(events_loop: &mut EventsLoop) -> Result<System, SystemError>  {
+    pub fn new(event_loop: &EventLoop) -> System {
         // ...
 
-        let (mut swapchain, images) = {
+        let (swapchain, images) = {
             let caps = surface.capabilities(physical).unwrap();
             let usage = caps.supported_usage_flags;
             let alpha = caps.supported_composite_alpha.iter().next().unwrap();
             let format = caps.supported_formats[0].0;
-
-            let initial_dimensions = if let Some(dimensions) = window.get_inner_size() {
-                let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
-                vp.projection = perspective(dimensions.0 as f32 / dimensions.1 as f32, 180.0, 0.01, 100.0);
-                [dimensions.0, dimensions.1]
-            } else {
-                return Err(SystemError::new(SystemErrorType::ResizeFailure));
-            };
+            let dimensions: [u32; 2] = surface.window().inner_size().into();
 
             Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
-                           initial_dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
-                           PresentMode::Fifo, true, None).unwrap()
+                           dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
+                           PresentMode::Fifo, FullscreenExclusive::Default, true, ColorSpace::SrgbNonLinear).unwrap()
         };
 
-        Ok(System{
+        System{
             // ...
             swapchain,
-        })
+        }
     }
 }
 ```
@@ -477,7 +396,7 @@ mod ambient_frag {
 }
 
 impl System {
-    pub fn new(events_loop: &mut EventsLoop) -> Result<System, SystemError>  {
+    pub fn new(event_loop: &EventLoop) -> System {
         // ...
 
         let deferred_vert = deferred_vert::Shader::load(device.clone()).unwrap();
@@ -487,9 +406,9 @@ impl System {
         let ambient_vert = ambient_vert::Shader::load(device.clone()).unwrap();
         let ambient_frag = ambient_frag::Shader::load(device.clone()).unwrap();
 
-        Ok(System{
+        System{
             // ...
-        })
+        }
     }
 }
 ```
@@ -511,12 +430,13 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(events_loop: &mut EventsLoop) -> Result<System, SystemError>  {
+    pub fn new(event_loop: &EventLoop) -> System {
         // ...
 
         let mut vp_buffer = CpuAccessibleBuffer::from_data(
             device.clone(),
             BufferUsage::all(),
+            false,
             deferred_vert::ty::VP_Data {
                 view: vp.view.into(),
                 projection: vp.projection.into(),
@@ -527,13 +447,13 @@ impl System {
         let ambient_buffer = CpuBufferPool::<ambient_frag::ty::Ambient_Data>::uniform_buffer(device.clone());
         let directional_buffer = CpuBufferPool::<directional_frag::ty::Directional_Light_Data>::uniform_buffer(device.clone());
 
-        Ok(System{
+        System{
             // ...
             vp_buffer,
             model_uniform_buffer,
             ambient_buffer,
             directional_buffer,
-        })
+        }
     }
 }
 ```
@@ -550,7 +470,7 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(events_loop: &mut EventsLoop) -> Result<System, SystemError>  {
+    pub fn new(event_loop: &EventLoop) -> System {
         // ...
 
         let render_pass = Arc::new(vulkano::ordered_passes_renderpass!(device.clone(),
@@ -597,10 +517,10 @@ impl System {
         let deferred_pass = Subpass::from(render_pass.clone(), 0).unwrap();
         let lighting_pass = Subpass::from(render_pass.clone(), 1).unwrap();
 
-        Ok(System{
+        System{
             // ...
             render_pass,
-        })
+        }
     }
 }
 ```
@@ -624,7 +544,7 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(events_loop: &mut EventsLoop) -> Result<System, SystemError>  {
+    pub fn new(event_loop: &EventLoop) -> System {
         // ...
 
         let deferred_pipeline = Arc::new(GraphicsPipeline::start()
@@ -690,12 +610,12 @@ impl System {
             .build(device.clone())
             .unwrap());
 
-        Ok(System{
+        System{
             // ...
             deferred_pipeline,
             directional_pipeline,
             ambient_pipeline,
-        })
+        }
     }
 }
 ```
@@ -718,12 +638,13 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(events_loop: &mut EventsLoop) -> Result<System, SystemError>  {
+    pub fn new(event_loop: &EventLoop) -> System {
         // ...
 
         let dummy_verts = CpuAccessibleBuffer::from_iter(
             device.clone(),
             BufferUsage::all(),
+            false,
             DummyVertex::list().iter().cloned()
         ).unwrap();
 
@@ -731,11 +652,12 @@ impl System {
 
         let (framebuffers, color_buffer, normal_buffer) = System::window_size_dependent_setup(device.clone(), &images, render_pass.clone(), &mut dynamic_state);
 
-        let vp_set = Arc::new(PersistentDescriptorSet::start(deferred_pipeline.clone(), 0)
+        let vp_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
+        let vp_set = Arc::new(PersistentDescriptorSet::start(vp_layout.clone())
             .add_buffer(vp_buffer.clone()).unwrap()
             .build().unwrap());
 
-        Ok(System{
+        System{
             // ...
             dummy_verts,
             dynamic_state,
@@ -743,7 +665,7 @@ impl System {
             color_buffer,
             normal_buffer,
             vp_set,
-        })
+        }
     }
 
     fn window_size_dependent_setup(
@@ -782,15 +704,18 @@ impl System {
         self.vp_buffer = CpuAccessibleBuffer::from_data(
             self.device.clone(),
             BufferUsage::all(),
+            false,
             deferred_vert::ty::VP_Data {
                 view: self.vp.view.into(),
                 projection: self.vp.projection.into(),
             }
         ).unwrap();
 
-        self.vp_set = Arc::new(PersistentDescriptorSet::start(self.deferred_pipeline.clone(), 0)
+        let vp_layout = self.deferred_pipeline.descriptor_set_layout(0).unwrap();
+        let self.vp_set = Arc::new(PersistentDescriptorSet::start(vp_layout.clone())
             .add_buffer(self.vp_buffer.clone()).unwrap()
             .build().unwrap());
+
         self.render_stage = RenderStage::Stopped;
     }
 }
@@ -831,13 +756,13 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(events_loop: &mut EventsLoop) -> Result<System, SystemError>  {
+    pub fn new(event_loop: &EventLoop) -> System {
         // ...
         let render_stage = RenderStage::Stopped;
-        Ok(System{
+        System{
             // ...
             render_stage,
-        })   
+        }
     }
 }
 ```
@@ -859,22 +784,22 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(events_loop: &mut EventsLoop) -> Result<System, SystemError>  {
+    pub fn new(event_loop: &EventLoop) -> System {
         // ...
         let commands = None;
         let img_index = 0;
         let acquire_future = None;
 
-        Ok(System{
+        System{
             // ...
             commands,
             img_index,
             acquire_future,
-        })   
+        }   
     }
 
     pub fn start(&mut self) {
-        let (img_index, acquire_future) = match swapchain::acquire_next_image(self.swapchain.clone(), None) {
+        let (img_index, suboptimal, acquire_future) = match swapchain::acquire_next_image(self.swapchain.clone(), None) {
             Ok(r) => r,
             Err(AcquireError::OutOfDate) => {
                 self.recreate_swapchain();
@@ -882,6 +807,11 @@ impl System {
             },
             Err(err) => panic!("{:?}", err)
         };
+
+        if suboptimal {
+          self.recreate_swapchain();
+          return;
+        }
 
         let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), 1f32.into()];
 
@@ -962,28 +892,26 @@ impl System {
 
         let af = self.acquire_future.take().unwrap();
 
-        let mut local_future:Box<dyn GpuFuture> = Box::new(sync::now(self.device.clone()));
+        let mut local_future:Option<Box<dyn GpuFuture>> = Some(Box::new(sync::now(self.device.clone())) as Box<dyn GpuFuture>);
 
         mem::swap(&mut local_future, previous_frame_end);
 
-        let future = local_future.join(af)
+        let future = local_future.take().unwrap().join(af)
             .then_execute(self.queue.clone(), command_buffer).unwrap()
             .then_swapchain_present(self.queue.clone(), self.swapchain.clone(), self.img_index)
             .then_signal_fence_and_flush();
 
         match future {
             Ok(future) => {
-                // This wait is required when using NVIDIA or running on macOS. See https://github.com/vulkano-rs/vulkano/issues/1247
-                future.wait(None).unwrap();
-                *previous_frame_end = Box::new(future);
+                *previous_frame_end = Some(Box::new(future) as Box<_>);
             }
             Err(FlushError::OutOfDate) => {
                 self.recreate_swapchain();
-                *previous_frame_end = Box::new(sync::now(self.device.clone()));
+                *previous_frame_end = Some(Box::new(sync::now(self.device.clone())) as Box<_>);
             }
             Err(e) => {
-                println!("{:?}", e);
-                *previous_frame_end = Box::new(sync::now(self.device.clone()));
+                println!("Failed to flush future: {:?}", e);
+                *previous_frame_end = Some(Box::new(sync::now(self.device.clone())) as Box<_>);
             }
         }
 
@@ -1020,7 +948,7 @@ It might seem like we're "cheating" the compiler here because we're getting some
 Our second example might make this more clear.
 
 ```rust
-let mut local_future:Box<dyn GpuFuture> = Box::new(sync::now(self.device.clone()));
+let mut local_future:Option<Box<dyn GpuFuture>> = Some(Box::new(sync::now(self.device.clone())) as Box<dyn GpuFuture>);
 mem::swap(&mut local_future, previous_frame_end);
 ```
 
@@ -1063,14 +991,16 @@ impl System {
             self.model_uniform_buffer.next(uniform_data).unwrap()
         };
 
+        let deferred_layout = self.deferred_pipeline.descriptor_set_layout(1).unwrap();
         let model_set:Arc<dyn DescriptorSet + Send + Sync> = Arc::new(
-            PersistentDescriptorSet::start(self.deferred_pipeline.clone(), 1)
+            PersistentDescriptorSet::start(deferred_layout.clone())
                 .add_buffer(model_uniform_subbuffer.clone()).unwrap()
                 .build().unwrap());
 
         let vertex_buffer:Arc<dyn BufferAccess + Send + Sync> = CpuAccessibleBuffer::from_iter(
             self.device.clone(),
             BufferUsage::all(),
+            false,
             model.data().iter().cloned()).unwrap();
 
         self.commands = Some(self.commands.take().unwrap()
@@ -1124,6 +1054,7 @@ impl System {
         self.ambient_buffer = CpuAccessibleBuffer::from_data(
             self.device.clone(),
             BufferUsage::all(),
+            self,
             ambient_frag::ty::Ambient_Data {
                 color,
                 intensity
@@ -1171,7 +1102,9 @@ Now for the rest of the method.
 impl System {
     pub fn ambient(&mut self) {
         // ...
-        let ambient_set = Arc::new(PersistentDescriptorSet::start(self.ambient_pipeline.clone(), 0)
+
+        let ambient_layout = self.ambient_pipeline.descriptor_set_layout(0).unwrap();
+        let ambient_set = Arc::new(PersistentDescriptorSet::start(ambient_layout.clone())
             .add_image(self.color_buffer.clone()).unwrap()
             .add_image(self.normal_buffer.clone()).unwrap()
             .add_buffer(self.ambient_buffer.clone()).unwrap()
@@ -1223,12 +1156,15 @@ impl System {
         }
 
         let directional_uniform_subbuffer = self.generate_directional_buffer(&self.directional_buffer, &directional_light);
-        let directional_set = Arc::new(
+
+        let directional_layout = self.directional_pipeline.descriptor_set_layout(0).unwrap();
+        let directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clone())
             PersistentDescriptorSet::start(self.directional_pipeline.clone(), 0)
             .add_image(self.color_buffer.clone()).unwrap()
             .add_image(self.normal_buffer.clone()).unwrap()
             .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
             .build().unwrap());
+
         self.commands = Some(self.commands.take().unwrap()
             .draw(
                 self.directional_pipeline.clone(),
@@ -1262,25 +1198,26 @@ fn main() {
 
     let directional_light = DirectionalLight::new([-4.0, -4.0, 0.0, 1.0], [1.0, 1.0, 1.0]);
 
-    loop {
-        previous_frame_end.cleanup_finished();
+    event_loop.run(move |event, _, control_flow| {
+        match event {
+            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
+                *control_flow = ControlFlow::Exit;
+            },
+            Event::WindowEvent { event: WindowEvent::Resized(_), .. } => {
+                system.recreate_swapchain();
+            },
+            Event::RedrawEventsCleared => {
+                previous_frame_end.as_mut().take().unwrap().cleanup_finished();
 
         system.start();
         system.geometry(&mut teapot);
         system.ambient();
         system.directional(&directional_light);
         system.finish(&mut previous_frame_end);
-
-        let mut done = false;
-        events_loop.poll_events(|ev| {
-            match ev {
-                Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => done = true,
-                Event::WindowEvent { event: WindowEvent::Resized(_), .. } => system.recreate_swapchain(),
-                _ => ()
-            }
-        });
-        if done { return; }
+      },
+      _ => ()
     }
+  });
 }
 ```
 
@@ -1301,12 +1238,12 @@ The above example is great and all, but that doesn't really improve on anything 
 `main.rs`
 ```rust
 fn main() {
-    let mut events_loop = EventsLoop::new();
-    let mut system = System::new(&mut events_loop).unwrap();
+    let event_loop = EventLoop::new();
+    let mut system = System::new(&event_loop);
 
     system.set_view(&look_at(&vec3(0.0, 0.0, 0.01), &vec3(0.0, 0.0, 0.0), &vec3(0.0, -1.0, 0.0)));
 
-    let mut previous_frame_end: Box<dyn GpuFuture> = Box::new(sync::now(system.device.clone()));
+    let mut previous_frame_end = Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
 
     let mut teapot = Model::new("./src/models/teapot.obj").build();
     teapot.translate(vec3(-5.0, 2.0, -5.0));
@@ -1323,47 +1260,48 @@ fn main() {
 
     let rotation_start = Instant::now();
 
-    loop {
-        previous_frame_end.cleanup_finished();
+    event_loop.run(move |event, _, control_flow| {
+        match event {
+            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
+                *control_flow = ControlFlow::Exit;
+            },
+            Event::WindowEvent { event: WindowEvent::Resized(_), .. } => {
+                system.recreate_swapchain();
+            },
+            Event::RedrawEventsCleared => {
+                previous_frame_end.as_mut().take().unwrap().cleanup_finished();
 
-        let elapsed = rotation_start.elapsed().as_secs() as f64 + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
-        let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
+                let elapsed = rotation_start.elapsed().as_secs() as f64 + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
+                let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
 
-        teapot.zero_rotation();
-        teapot.rotate(elapsed_as_radians as f32 * 50.0, vec3(0.0, 0.0, 1.0));
-        teapot.rotate(elapsed_as_radians as f32 * 30.0, vec3(0.0, 1.0, 0.0));
-        teapot.rotate(elapsed_as_radians as f32 * 20.0, vec3(1.0, 0.0, 0.0));
+                teapot.zero_rotation();
+                teapot.rotate(elapsed_as_radians as f32 * 50.0, vec3(0.0, 0.0, 1.0));
+                teapot.rotate(elapsed_as_radians as f32 * 30.0, vec3(0.0, 1.0, 0.0));
+                teapot.rotate(elapsed_as_radians as f32 * 20.0, vec3(1.0, 0.0, 0.0));
 
-        suzanne.zero_rotation();
-        suzanne.rotate(elapsed_as_radians as f32 * 25.0, vec3(0.0, 0.0, 1.0));
-        suzanne.rotate(elapsed_as_radians as f32 * 10.0, vec3(0.0, 1.0, 0.0));
-        suzanne.rotate(elapsed_as_radians as f32 * 60.0, vec3(1.0, 0.0, 0.0));
+                suzanne.zero_rotation();
+                suzanne.rotate(elapsed_as_radians as f32 * 25.0, vec3(0.0, 0.0, 1.0));
+                suzanne.rotate(elapsed_as_radians as f32 * 10.0, vec3(0.0, 1.0, 0.0));
+                suzanne.rotate(elapsed_as_radians as f32 * 60.0, vec3(1.0, 0.0, 0.0));
 
-        torus.zero_rotation();
-        torus.rotate(elapsed_as_radians as f32 * 5.0, vec3(0.0, 0.0, 1.0));
-        torus.rotate(elapsed_as_radians as f32 * 45.0, vec3(0.0, 1.0, 0.0));
-        torus.rotate(elapsed_as_radians as f32 * 12.0, vec3(1.0, 0.0, 0.0));
+                torus.zero_rotation();
+                torus.rotate(elapsed_as_radians as f32 * 5.0, vec3(0.0, 0.0, 1.0));
+                torus.rotate(elapsed_as_radians as f32 * 45.0, vec3(0.0, 1.0, 0.0));
+                torus.rotate(elapsed_as_radians as f32 * 12.0, vec3(1.0, 0.0, 0.0));
 
-        system.start();
-        system.geometry(&mut teapot);
-        system.geometry(&mut suzanne);
-        system.geometry(&mut torus);
-        system.ambient();
-        system.directional(&directional_light_r);
-        system.directional(&directional_light_g);
-        system.directional(&directional_light_b);
-        system.finish(&mut previous_frame_end);
-
-        let mut done = false;
-        events_loop.poll_events(|ev| {
-            match ev {
-                Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => done = true,
-                Event::WindowEvent { event: WindowEvent::Resized(_), .. } => system.recreate_swapchain(),
-                _ => ()
-            }
-        });
-        if done { return; }
-    }
+                system.start();
+                system.geometry(&mut teapot);
+                system.geometry(&mut suzanne);
+                system.geometry(&mut torus);
+                system.ambient();
+                system.directional(&directional_light_r);
+                system.directional(&directional_light_g);
+                system.directional(&directional_light_b);
+                system.finish(&mut previous_frame_end);
+            },
+            _ => ()
+        }
+    });
 }
 ```
 

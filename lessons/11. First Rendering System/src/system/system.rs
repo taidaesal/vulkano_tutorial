@@ -1,29 +1,37 @@
+// Copyright (c) 2020 taidaesal
+// Licensed under the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>
+//
+// This file contains code copied and/or adapted
+// from code provided by the Vulkano project under
+// the MIT license
+
 use crate::obj_loader::{DummyVertex, NormalVertex};
 use crate::model::Model;
 use crate::system::DirectionalLight;
-use super::system_errors::{SystemError, SystemErrorType};
 
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, BufferAccess};
+use vulkano::buffer::{BufferAccess, BufferUsage, CpuAccessibleBuffer, CpuBufferPool};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
-use vulkano::descriptor::DescriptorSet;
-use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet};
+use vulkano::descriptor::pipeline_layout::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
 use vulkano::image::{AttachmentImage, SwapchainImage};
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::memory::pool::StdMemoryPool;
-use vulkano::pipeline::blend::{BlendOp, AttachmentBlend, BlendFactor};
+use vulkano::pipeline::blend::{BlendOp, BlendFactor, AttachmentBlend};
 use vulkano::pipeline::{GraphicsPipeline, GraphicsPipelineAbstract};
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError, Surface, SwapchainAcquireFuture};
+use vulkano::swapchain::{AcquireError, ColorSpace, FullscreenExclusive, PresentMode, Surface, SurfaceTransform, Swapchain, SwapchainAcquireFuture, SwapchainCreationError};
 use vulkano::swapchain;
 use vulkano::sync::{GpuFuture, FlushError};
 use vulkano::sync;
 
 use vulkano_win::VkSurfaceBuild;
 
-use winit::{EventsLoop, Window, WindowBuilder};
+use winit::window::{WindowBuilder, Window};
+use winit::event_loop::EventLoop;
 
 use nalgebra_glm::{identity, perspective, TMat4};
 
@@ -126,7 +134,7 @@ impl VP {
 }
 
 impl System {
-    pub fn new(events_loop: &mut EventsLoop) -> Result<System, SystemError>  {
+    pub fn new(event_loop: &EventLoop<()>) -> System  {
         let instance = {
             let extensions = vulkano_win::required_extensions();
             Instance::new(None, &extensions, None).unwrap()
@@ -134,8 +142,7 @@ impl System {
 
         let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
 
-        let surface = WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
-        let window = surface.window();
+        let surface = WindowBuilder::new().build_vk_surface(&event_loop, instance.clone()).unwrap();
 
         let queue_family = physical.queue_families().find(|&q| {
             q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
@@ -154,18 +161,12 @@ impl System {
             let usage = caps.supported_usage_flags;
             let alpha = caps.supported_composite_alpha.iter().next().unwrap();
             let format = caps.supported_formats[0].0;
-
-            let initial_dimensions = if let Some(dimensions) = window.get_inner_size() {
-                let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
-                vp.projection = perspective(dimensions.0 as f32 / dimensions.1 as f32, 180.0, 0.01, 100.0);
-                [dimensions.0, dimensions.1]
-            } else {
-                return Err(SystemError::new(SystemErrorType::ResizeFailure));
-            };
+            let dimensions: [u32; 2] = surface.window().inner_size().into();
+            vp.projection = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.01, 100.0);
 
             Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
-                           initial_dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
-                           PresentMode::Fifo, true, None).unwrap()
+                           dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
+                           PresentMode::Fifo, FullscreenExclusive::Default, true, ColorSpace::SrgbNonLinear).unwrap()
         };
 
         let deferred_vert = deferred_vert::Shader::load(device.clone()).unwrap();
@@ -178,6 +179,7 @@ impl System {
         let vp_buffer = CpuAccessibleBuffer::from_data(
             device.clone(),
             BufferUsage::all(),
+            false,
             deferred_vert::ty::VP_Data {
                 view: vp.view.into(),
                 projection: vp.projection.into(),
@@ -187,6 +189,7 @@ impl System {
         let ambient_buffer = CpuAccessibleBuffer::from_data(
             device.clone(),
             BufferUsage::all(),
+            false,
             ambient_frag::ty::Ambient_Data {
                 color: [1.0, 1.0, 1.0],
                 intensity: 0.1
@@ -307,6 +310,7 @@ impl System {
         let dummy_verts = CpuAccessibleBuffer::from_iter(
             device.clone(),
             BufferUsage::all(),
+            false,
             DummyVertex::list().iter().cloned()
         ).unwrap();
 
@@ -314,7 +318,8 @@ impl System {
 
         let (framebuffers, color_buffer, normal_buffer) = System::window_size_dependent_setup(device.clone(), &images, render_pass.clone(), &mut dynamic_state);
 
-        let vp_set = Arc::new(PersistentDescriptorSet::start(deferred_pipeline.clone(), 0)
+        let vp_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
+        let vp_set = Arc::new(PersistentDescriptorSet::start(vp_layout.clone())
             .add_buffer(vp_buffer.clone()).unwrap()
             .build().unwrap());
 
@@ -324,7 +329,7 @@ impl System {
         let img_index = 0;
         let acquire_future = None;
 
-        Ok(System{
+        System{
             surface,
             device,
             queue,
@@ -348,7 +353,7 @@ impl System {
             commands,
             img_index,
             acquire_future,
-        })
+        }
     }
 
     pub fn ambient(&mut self) {
@@ -372,7 +377,8 @@ impl System {
             }
         }
 
-        let ambient_set = Arc::new(PersistentDescriptorSet::start(self.ambient_pipeline.clone(), 0)
+        let ambient_layout = self.ambient_pipeline.descriptor_set_layout(0).unwrap();
+        let ambient_set = Arc::new(PersistentDescriptorSet::start(ambient_layout.clone())
             .add_image(self.color_buffer.clone()).unwrap()
             .add_image(self.normal_buffer.clone()).unwrap()
             .add_buffer(self.ambient_buffer.clone()).unwrap()
@@ -411,12 +417,14 @@ impl System {
         }
 
         let directional_uniform_subbuffer = self.generate_directional_buffer(&self.directional_buffer, &directional_light);
-        let directional_set = Arc::new(
-            PersistentDescriptorSet::start(self.directional_pipeline.clone(), 0)
+
+        let directional_layout = self.directional_pipeline.descriptor_set_layout(0).unwrap();
+        let directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clone())
             .add_image(self.color_buffer.clone()).unwrap()
             .add_image(self.normal_buffer.clone()).unwrap()
             .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
             .build().unwrap());
+
         self.commands = Some(self.commands.take().unwrap()
             .draw(
                 self.directional_pipeline.clone(),
@@ -427,10 +435,9 @@ impl System {
             .unwrap());
     }
 
-    pub fn finish(&mut self, previous_frame_end: &mut Box<dyn GpuFuture>) {
+    pub fn finish(&mut self, previous_frame_end: &mut Option<Box<dyn GpuFuture>>) {
         match self.render_stage {
-            RenderStage::Directional => {
-            },
+            RenderStage::Directional => {},
             RenderStage::NeedsRedraw => {
                 self.recreate_swapchain();
                 self.commands = None;
@@ -453,28 +460,27 @@ impl System {
 
         let af = self.acquire_future.take().unwrap();
 
-        let mut local_future:Box<dyn GpuFuture> = Box::new(sync::now(self.device.clone()));
+        let mut local_future:Option<Box<dyn GpuFuture>> = Some(Box::new(sync::now(self.device.clone())) as Box<dyn GpuFuture>);
 
         mem::swap(&mut local_future, previous_frame_end);
 
-        let future = local_future.join(af)
+        let future = local_future.take().unwrap().join(af)
             .then_execute(self.queue.clone(), command_buffer).unwrap()
             .then_swapchain_present(self.queue.clone(), self.swapchain.clone(), self.img_index)
             .then_signal_fence_and_flush();
 
+
         match future {
             Ok(future) => {
-                // This wait is required when using NVIDIA or running on macOS. See https://github.com/vulkano-rs/vulkano/issues/1247
-                future.wait(None).unwrap();
-                *previous_frame_end = Box::new(future);
+                *previous_frame_end = Some(Box::new(future) as Box<_>);
             }
             Err(FlushError::OutOfDate) => {
                 self.recreate_swapchain();
-                *previous_frame_end = Box::new(sync::now(self.device.clone()));
+                *previous_frame_end = Some(Box::new(sync::now(self.device.clone())) as Box<_>);
             }
             Err(e) => {
-                println!("{:?}", e);
-                *previous_frame_end = Box::new(sync::now(self.device.clone()));
+                println!("Failed to flush future: {:?}", e);
+                *previous_frame_end = Some(Box::new(sync::now(self.device.clone())) as Box<_>);
             }
         }
 
@@ -497,8 +503,7 @@ impl System {
 
     pub fn geometry(&mut self, model: &mut Model) {
         match self.render_stage {
-            RenderStage::Deferred => {
-            },
+            RenderStage::Deferred => {},
             RenderStage::NeedsRedraw => {
                 self.recreate_swapchain();
                 self.render_stage = RenderStage::Stopped;
@@ -523,14 +528,16 @@ impl System {
             self.model_uniform_buffer.next(uniform_data).unwrap()
         };
 
+        let deferred_layout = self.deferred_pipeline.descriptor_set_layout(1).unwrap();
         let model_set:Arc<dyn DescriptorSet + Send + Sync> = Arc::new(
-            PersistentDescriptorSet::start(self.deferred_pipeline.clone(), 1)
+            PersistentDescriptorSet::start(deferred_layout.clone())
                 .add_buffer(model_uniform_subbuffer.clone()).unwrap()
                 .build().unwrap());
 
         let vertex_buffer:Arc<dyn BufferAccess + Send + Sync> = CpuAccessibleBuffer::from_iter(
             self.device.clone(),
             BufferUsage::all(),
+            false,
             model.data().iter().cloned()).unwrap();
 
         self.commands = Some(self.commands.take().unwrap()
@@ -548,6 +555,7 @@ impl System {
         self.ambient_buffer = CpuAccessibleBuffer::from_data(
             self.device.clone(),
             BufferUsage::all(),
+            false,
             ambient_frag::ty::Ambient_Data {
                 color,
                 intensity
@@ -560,13 +568,15 @@ impl System {
         self.vp_buffer = CpuAccessibleBuffer::from_data(
             self.device.clone(),
             BufferUsage::all(),
+            false,
             deferred_vert::ty::VP_Data {
                 view: self.vp.view.into(),
                 projection: self.vp.projection.into(),
             }
         ).unwrap();
 
-        self.vp_set = Arc::new(PersistentDescriptorSet::start(self.deferred_pipeline.clone(), 0)
+        let vp_layout = self.deferred_pipeline.descriptor_set_layout(0).unwrap();
+        self.vp_set = Arc::new(PersistentDescriptorSet::start(vp_layout.clone())
             .add_buffer(self.vp_buffer.clone()).unwrap()
             .build().unwrap());
         self.render_stage = RenderStage::Stopped;
@@ -590,7 +600,7 @@ impl System {
             }
         }
 
-        let (img_index, acquire_future) = match swapchain::acquire_next_image(self.swapchain.clone(), None) {
+        let (img_index, suboptimal, acquire_future) = match swapchain::acquire_next_image(self.swapchain.clone(), None) {
             Ok(r) => r,
             Err(AcquireError::OutOfDate) => {
                 self.recreate_swapchain();
@@ -598,6 +608,11 @@ impl System {
             },
             Err(err) => panic!("{:?}", err)
         };
+
+        if suboptimal {
+            self.recreate_swapchain();
+            return;
+        }
 
         let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), 1f32.into()];
 
@@ -614,21 +629,13 @@ impl System {
         self.render_stage = RenderStage::NeedsRedraw;
         self.commands = None;
 
-        let window = self.surface.window();
-
-        let dimensions = if let Some(dimensions) = window.get_inner_size() {
-            let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
-            self.vp.projection = perspective(dimensions.0 as f32 / dimensions.1 as f32, 180.0, 0.01, 100.0);
-            [dimensions.0, dimensions.1]
-        } else {
-            return;
-        };
-
-        let (new_swapchain, new_images) = match self.swapchain.recreate_with_dimension(dimensions) {
+        let dimensions: [u32; 2] = self.surface.window().inner_size().into();
+        let (new_swapchain, new_images) = match self.swapchain.recreate_with_dimensions(dimensions) {
             Ok(r) => r,
             Err(SwapchainCreationError::UnsupportedDimensions) => return,
-            Err(err) => panic!("{:?}", err)
+            Err(e) => panic!("Failed to recreate swapchain: {:?}", e)
         };
+        self.vp.projection = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.01, 100.0);
 
         self.swapchain = new_swapchain;
         let (new_framebuffers, new_color_buffer, new_normal_buffer) = System::window_size_dependent_setup(self.device.clone(), &new_images, self.render_pass.clone(), &mut self.dynamic_state);
@@ -639,13 +646,15 @@ impl System {
         self.vp_buffer = CpuAccessibleBuffer::from_data(
             self.device.clone(),
             BufferUsage::all(),
+            false,
             deferred_vert::ty::VP_Data {
                 view: self.vp.view.into(),
                 projection: self.vp.projection.into(),
             }
         ).unwrap();
 
-        self.vp_set = Arc::new(PersistentDescriptorSet::start(self.deferred_pipeline.clone(), 0)
+        let vp_layout = self.deferred_pipeline.descriptor_set_layout(0).unwrap();
+        self.vp_set = Arc::new(PersistentDescriptorSet::start(vp_layout.clone())
             .add_buffer(self.vp_buffer.clone()).unwrap()
             .build().unwrap());
 

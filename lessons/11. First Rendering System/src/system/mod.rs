@@ -1,5 +1,8 @@
+// Copyright (c) 2020 taidaesal
+// Licensed under the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>
+
 mod system;
-mod system_errors;
 
 pub use system::System as System;
 
