@@ -1,6 +1,6 @@
 # Vulkano Tutorial
 
-A repo for a tutorial series on Vulkan programming using the Vulkano Rust crate. The lessons go from initial project setup to toy rendering systems.
+A repo for a tutorial series on Vulkan programming using the Vulkano Rust crate. The lessons go from initial project setup to toy rendering systems. Based on example code provided by the Vulkano project contributors.
 
 ## Introduction
 Provides a brief overview of some Vulkan considerations as well as a couple of notes on Rust.
@@ -63,12 +63,12 @@ Now that we've set up a working lighting system let's take a step back and look 
 
 ## New Uniforms
 
-After a couple of longer lessons, let's take a short break to refactor our normal code as well as set the stage for multiple models.
+After a couple of longer lessons, let's take a short break to refactor our normals code as well as set the stage for multiple models.
 
 [Normal Uniform](doc_src/section_10.md)
 
 ## Render System I
 
-We're ready now to take our first stab at making a real rendering system. We won't introduce any new concepts in this lesson, just wrap up what we already know in a way that lets us input models to renders as well as directional light sources. Think of this as a draft version of the more advanced system we'll make in a few lessons.
+We're ready now to take our first stab at making a real rendering system. We won't introduce any new concepts in this lesson, just wrap up what we already know in a way that lets us input models to render as well as directional light sources. Think of this as a draft version of the more advanced system we'll make in a few lessons.
 
 [Render System](doc_src/section_11.md)
