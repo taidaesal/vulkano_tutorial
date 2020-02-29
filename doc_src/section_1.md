@@ -22,7 +22,7 @@ Let's go over the dependencies one by one.
 ```toml
 vulkano = "0.17.0"
 ```
-This is the main library ("crate" in Rust-speak) that we'll be using. This crate wraps the Vulkan API with its own Rust API so that we can call it from our application. We could use the Vulkan API directly if we really wanted to but that would be far more difficult than necessary as well as producing ugly code that doesn't follow Rust idioms. This is because the main Vulkan API is in C and can only be interacted with using Rust's Foreign Function Interface (FFI) mechanism. Although Rust is designed to interface with C when necessary, why would we do that when we have a lovely crate to wrap it all up in a nice Rusty bow for us?
+This is the main library ("crate" in Rust-speak) that we'll be using. This crate wraps the Vulkan API with its own Rust API so that we can call it from our application. We could use the Vulkan API directly if we really wanted to but that would be far more difficult than necessary,` as well as producing ugly code that doesn't follow Rust idioms. This is because the main Vulkan API is in C and can only be interacted with using Rust's Foreign Function Interface (FFI) mechanism. Although Rust is designed to interface with C when necessary, why would we do that when we have a lovely crate to wrap it all up in a nice Rusty bow for us?
 
 There is a small trade-off here because if you want to go from using Vulkano to using Vulkan directly there will be a learning curve as you get to grips with the native C API. However, learning Vulkano will teach you all the core concepts of Vulkan so it likely won't be that much work to make the change later.
 
@@ -239,7 +239,7 @@ A `GraphicsPipeline` is the second half of the process we started with our `Rend
 
 However, since we're not rendering anything in this tutorial we'll come back to this in the next lesson. So don't worry right now if you don't understand exactly what the `RenderPass` and `GraphicsPipeline` are supposed to be doing, just remember that this is the point in the process where we need to set it up.
 
-One thing that we do need to declare now is a `DynamicState` struct. This is used to let us change the size of the viewport (for example, on window-resize) without needing to recreate the entire `GraphicsPipeline`
+One thing that we do need to declare now is a `DynamicState` struct. This is used to let us change the size of the viewport (for example, on window-resize) without needing to recreate the entire `GraphicsPipeline`.
 
 ```rust
 let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None, compare_mask: None, write_mask: None, reference: None };
