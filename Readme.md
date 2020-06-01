@@ -72,3 +72,9 @@ After a couple of longer lessons, let's take a short break to refactor our norma
 We're ready now to take our first stab at making a real rendering system. We won't introduce any new concepts in this lesson, just wrap up what we already know in a way that lets us input models to render as well as directional light sources. Think of this as a draft version of the more advanced system we'll make in a few lessons.
 
 [Render System](doc_src/section_11.md)
+
+## Light Objects
+
+Let's take a bit of a break from "big picture" topics and implement a small feature that will give us the option to visually display where our light sources are in our scene.
+
+[Light Objects](doc_src/section_11_5.md)
