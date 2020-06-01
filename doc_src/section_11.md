@@ -216,7 +216,7 @@ fn main() {
 }
 ```
 
-We have created our `EventLoop` object and created an empty main program loop that polls for window close events. If you run this (after also updating `system.rs`) you will see a blank window open that closes when you click the "x" button.
+We have created our `EventLoop` object and created an empty main program loop that polls for window close events. If you run this (after also updating `system.rs`) you will see a blank window that closes when you click the "x" button.
 
 `system.rs`
 ```rust
@@ -509,7 +509,7 @@ impl System {
                 {
                     color: [final_color],
                     depth_stencil: {},
-                    input: [color, normals, depth]
+                    input: [color, normals]
                 }
             ]
         ).unwrap());

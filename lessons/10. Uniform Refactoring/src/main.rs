@@ -212,7 +212,7 @@ fn main() {
             {
                 color: [final_color],
                 depth_stencil: {},
-                input: [color, normals, depth]
+                input: [color, normals]
             }
         ]
     ).unwrap());

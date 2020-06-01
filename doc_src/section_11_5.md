@@ -503,3 +503,5 @@ We don't have to declare anything new or wrestle with buffer configuration or an
 Run the code and see for yourself. With these few minor tweaks, our light object is being hidden when it goes behind the sphere.
 
 This is a rather small feature but it's one that I, personally, have found pretty useful in my own programs. Little things that make life easier for you as the programmer can go a long way in more complex projects.
+
+[lesson source code](../lessons/11.5.%20Light%20Objects)
