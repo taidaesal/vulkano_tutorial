@@ -292,7 +292,8 @@ let mut directional_set = Arc::new(PersistentDescriptorSet::start(directional_la
 
 Updating the draw commands is simple. Find the draw commands associated with the lighting pass and replace `vertex_buffer` with `dummy_verts`. The following is what my rendering commands look like, remember that I've gone back to using one directional light.
 ```rust
-let mut commands = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
+let mut commands = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
+commands
     .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
     .unwrap()
     .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), ())
@@ -306,17 +307,16 @@ let directional_set = Arc::new(PersistentDescriptorSet::start(directional_pipeli
     .add_image(normal_buffer.clone()).unwrap()
     .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
     .build().unwrap());
-commands = commands
+commands
     .draw(directional_pipeline.clone(), &dynamic_state, dummy_verts.clone(), directional_set.clone(), ())
     .unwrap();
 
-let command_buffer = commands
+commands
     .draw(ambient_pipeline.clone(), &dynamic_state, dummy_verts.clone(), ambient_set.clone(), ())
     .unwrap()
     .end_render_pass()
-    .unwrap()
-    .build()
     .unwrap();
+let command_buffer = commands.build().unwrap();
 ```
 
 #### Running the Code

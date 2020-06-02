@@ -338,7 +338,8 @@ Now we need to change our rendering system to call our directional shader three 
 
 First we change our command buffer declaration.
 ```rust
-let mut commands = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
+let mut commands = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
+commands
     .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
     .unwrap()
     .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), ())
@@ -364,7 +365,7 @@ We use our helper function for the first time here to declare our usual `directi
 
 Next we append the rendering commands to our command buffer building.
 ```rust
-commands = commands
+commands
     .draw(directional_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), directional_set.clone(), ())
     .unwrap();
 ```
@@ -378,7 +379,7 @@ directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clo
     .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
     .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
     .build().unwrap());
-commands = commands
+commands
     .draw(directional_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), directional_set.clone(), ())
     .unwrap();
 
@@ -389,20 +390,19 @@ directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clo
     .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
     .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
     .build().unwrap());
-commands = commands
+commands
     .draw(directional_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), directional_set.clone(), ())
     .unwrap();
 ```
 
 Lastly, let's draw our ambient buffer and finish our command buffer.
 ```rust
-let command_buffer = commands
+commands
     .draw(ambient_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), ambient_set.clone(), ())
     .unwrap()
     .end_render_pass()
-    .unwrap()
-    .build()
     .unwrap();
+let command_buffer = commands.build().unwrap();
 ```
 
 #### Running the Code

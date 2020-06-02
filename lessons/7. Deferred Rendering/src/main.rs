@@ -368,7 +368,8 @@ fn main() {
                     .add_buffer(directional_uniform_subbuffer).unwrap()
                     .build().unwrap());
 
-                let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
+                let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
+                cmd_buffer_builder
                     .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
                     .unwrap()
                     .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), ())
@@ -378,8 +379,8 @@ fn main() {
                     .draw(lighting_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), lighting_set.clone(), ())
                     .unwrap()
                     .end_render_pass()
-                    .unwrap()
-                    .build().unwrap();
+                    .unwrap();
+                let command_buffer = cmd_buffer_builder.build().unwrap();
 
                 let future = previous_frame_end.take().unwrap()
                     .join(acquire_future)

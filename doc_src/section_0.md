@@ -11,6 +11,10 @@ This tutorial is for anyone who wants to learn Vulkan and/or Rust. The primary a
 
 This tutorial series makes a conscious decision to focus on learning the "big picture" of Vulkan as the priority. It's less interested in rushing to show you how to do super-cool effects than in learning the fundamentals you'll need to know if you want to go beyond making tiny toy programs. An example of this is the way we leave textures until after we have a first draft of an actual rendering system. Textures are neat and a requirement for most modern applications, but in my experience learning textures before you learn, say, how to have a multi-stage rendering process is not the best order to learn things in. We have complex ideas to get the hang of and involving more things than necessary just makes it harder to learn the critical points. Once we have a solid grasp of the fundamentals we can then move on to making it look cool.
 
+#### A Note on Version
+
+The cargo version of each example will correspond to the version of the Vulkano library this tutorial series will be based on. As that library is updated I will try to keep these tutorials current. The Vulkano library is still considered unstable. This doesn't mean it's unusable but it does mean that there are frequent updates and that these updates may break code using earlier versions.
+
 ## Introduction to Vulkan
 
 ![vulkan api logo](../doc_imgs/0/vulkan_logo.png)

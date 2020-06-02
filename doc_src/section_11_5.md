@@ -249,14 +249,16 @@ impl System {
             false,
             model.color_data().iter().cloned()).unwrap();
 
-        self.commands = Some(self.commands.take().unwrap()
+        let mut commands = self.commands.take().unwrap();
+        commands
             .draw(self.light_obj_pipeline.clone(),
                   &self.dynamic_state,
                   vec![vertex_buffer.clone()],
                   vec![self.vp_set.clone(), model_set.clone()],
                   ()
             )
-            .unwrap());
+            .unwrap();
+        self.commands = Some(commands);
     }
 }
 ```

@@ -420,11 +420,18 @@ let clear_values = vec!([0.0, 0.0, 0.0, 1.0].into());
 
 At long last, we reach the point in our program where we actually tell our graphics hardware to do something. We do this by creating a `CommandBuffer` which holds a list of commands for our graphics hardware. We will submit these commands in a single batch operation to the graphics hardware, at which point our graphics hardware will get to work and our program will continue executing.
 
+Recent changes to the Vulkano library have separated this process into two steps:
+1: Create a `AutoCommandBufferBuilder` and add your commands to it
+2: Finalize the commands and create the final `CommandBuffer`
+
 ```rust
-let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
-    .begin_render_pass(framebuffers[image_num].clone(), false, clear_values).unwrap()
-    .end_render_pass().unwrap()
-    .build().unwrap();
+let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
+cmd_buffer_builder
+    .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
+    .unwrap()
+    .end_render_pass()
+    .unwrap();
+let command_buffer = cmd_buffer_builder.build().unwrap();
 ```
 
 A bit underwhelming, I know, but remember that this lesson is only here to produce a minimal Vulkan application and we're not really doing any *actual* rendering right now. This will get a bit more exciting in the next lesson. Let's look over what we do have anyway to learn the structure of a `CommandBuffer`.

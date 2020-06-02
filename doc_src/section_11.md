@@ -815,9 +815,11 @@ impl System {
 
         let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), 1f32.into()];
 
-        self.commands = Some(AutoCommandBufferBuilder::primary_one_time_submit(self.device.clone(), self.queue.family()).unwrap()
+        let mut commands = AutoCommandBufferBuilder::primary_one_time_submit(self.device.clone(), self.queue.family()).unwrap();
+        commands
             .begin_render_pass(self.framebuffers[img_index].clone(), false, clear_values)
-            .unwrap());
+            .unwrap();
+        self.commands = Some(commands);
 
         self.img_index = img_index;
 
@@ -883,10 +885,11 @@ impl System {
             }
         }
 
-        let command_buffer = self.commands.take()
-            .unwrap()
+        let mut commands = self.commands.take().unwrap();
+        commands
             .end_render_pass()
-            .unwrap()
+            .unwrap();
+        let command_buffer = commands
             .build()
             .unwrap();
 
@@ -1003,14 +1006,16 @@ impl System {
             false,
             model.data().iter().cloned()).unwrap();
 
-        self.commands = Some(self.commands.take().unwrap()
+        let mut commands = self.commands.take().unwrap();
+        commands
             .draw(self.deferred_pipeline.clone(),
                   &self.dynamic_state,
                   vec![vertex_buffer.clone()],
                   vec![self.vp_set.clone(), model_set.clone()],
                   ()
             )
-            .unwrap());
+            .unwrap();
+        self.commands = Some(commands);
     }
 }
 ```
@@ -1110,8 +1115,8 @@ impl System {
             .add_buffer(self.ambient_buffer.clone()).unwrap()
             .build().unwrap());
 
-        self.commands = Some(self.commands.take()
-            .unwrap()
+        let mut commands = self.commands.take().unwrap();
+        commands
             .next_subpass(false)
             .unwrap()
             .draw(self.ambient_pipeline.clone(),
@@ -1119,7 +1124,8 @@ impl System {
                   vec![self.dummy_verts.clone()],
                   ambient_set.clone(),
                   ())
-            .unwrap());
+            .unwrap();
+        self.commands = Some(commands);
     }
 }
 ```
@@ -1165,14 +1171,16 @@ impl System {
             .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
             .build().unwrap());
 
-        self.commands = Some(self.commands.take().unwrap()
+        let mut commands = self.commands.take().unwrap();
+        commands
             .draw(
                 self.directional_pipeline.clone(),
                 &self.dynamic_state,
                 vec![self.dummy_verts.clone()],
                 directional_set.clone(),
                 ())
-            .unwrap());
+            .unwrap();
+        self.commands = Some(commands);
     }
 }
 ```
