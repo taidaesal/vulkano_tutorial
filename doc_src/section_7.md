@@ -65,13 +65,13 @@ let render_pass = Arc::new(vulkano::ordered_passes_renderpass!(device.clone(),
         {
             color: [final_color],
             depth_stencil: {},
-            input: [color, normals, depth]
+            input: [color, normals]
         }
     ]
 ).unwrap());
 ```
 
-Lot to take in here, luckily there isn't much new syntax so we can move through it bit by bit.
+Lot to take in here but luckily there isn't much new syntax so we can move through it bit by bit.
 
 First, take note of the new way we're declaring this. Instead of `single_pass_renderpass!` as in the past, we are now using a macro named `ordered_passes_renderpass!`. The difference is about what you might expect, with `single_pass_renderpass!` actually just being a shortcut helper for using `ordered_passes_renderpass!` with only one sub-pass. We could just as easily have been using `ordered_passes_renderpass!` from the beginning. The reason we didn't is because I feel that the helper macro lowers some of the initial complexity a new learner has to deal with until they're ready for the more complicated version. You're ready now, so here we are.
 
@@ -93,7 +93,7 @@ This is the first pass and is more or less equivalent to the single sub-pass we'
 {
     color: [final_color],
     depth_stencil: {},
-    input: [color, normals, depth]
+    input: [color, normals]
 }
 ```
 
@@ -286,7 +286,7 @@ let lighting_set = Arc::new(PersistentDescriptorSet::start(lighting_layout.clone
     .add_buffer(uniform_buffer_subbuffer).unwrap()
     .build().unwrap());
 ```
-As you can see, renderpass attachments which are used as inputs to a sub-pass are given to that sub-pass as a uniform set. The order we add these attachment images to our descriptor set *does* matter, but not in the way you might expect. In the section on shaders we'll see how this looks on the consumer's side and revisit the top of order.
+As you can see, renderpass attachments which are used as inputs to a sub-pass are given to that sub-pass as a uniform set. The order we add these attachment images to our descriptor set *does* matter, but not in the way you might expect. In the section on shaders we'll see how this looks on the consumer's side and revisit the topic of order.
 
 #### Rendering
 
@@ -460,7 +460,7 @@ This would work, but I find it ugly and confusing, so I try to list the attachme
 
 Lastly, let's look at `f_color = vec4(subpassLoad(u_color).rgb, 1.0);`
 
-Since we can't just use our input uniforms as a regular variable, we need to use the special `subpassLoad` function to get data from them. The `.rgb` at the end is just a way of destructuring the vector and is the same to calling `.xyz`. The reason we use `.rgb` is that it helps underscore the fact that this is color data.
+Since we can't just use our input uniforms as a regular variable, we need to use the special `subpassLoad` function to get data from them. The `.rgb` at the end is just a way of destructuring the vector and is the same as calling `.xyz`. The reason we use `.rgb` is that it helps underscore the fact that this is color data.
 
 Let's add back in the sub-buffers we commented out earlier in the lesson.
 ```rust
@@ -569,5 +569,7 @@ We've covered a lot of ground in this lesson so I want to provide one more diagr
 On the left we have two *intermediary attachments*. There are named `color` and `normals` inside our Renderpass declaration. The shaders we ran on the first sub-pass output their data to these two attachments.
 
 When we ran our second pass we took the two attachments on the left as an input. We combined the data contained inside them, the base color and the surface normals, to produce a shaded version of the cube input. This final version is output to another attachment which is shown on the right. This final attachment is then shown to the user. All together this process produces a single frame.
+
+This is a trivial example compared to what's possible, but this basic process will be the key to everything we do from now on.
 
 [lesson source code](../lessons/7.%20Deferred%20Rendering)

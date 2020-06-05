@@ -103,7 +103,7 @@ layout(set = 0, binding = 3) uniform Directional_Light_Data {
 layout(location = 0) out vec4 f_color;
 
 void main() {
-    vec3 light_direction = normalize(directional.position.xyz - frag_pos);
+    vec3 light_direction = normalize(directional.position.xyz + frag_pos);
     float directional_intensity = max(dot(normalize(subpassLoad(u_normals).rgb), light_direction), 0.0);
     vec3 directional_color = directional_intensity * directional.color;
     vec3 combined_color = directional_color * subpassLoad(u_color).rgb;
@@ -296,7 +296,7 @@ The only change here is that we've added a second `.draw()` command for our ambi
 
 ![shows the same image of a lit cube that we've been generating in the last two lessons](../doc_imgs/8/single_light.png)
 
-This cube is very familiar to us by now, as is the pattern these lessons take of doing what you already knew how to do when we introduce a new topic. Now let's get to the real meat of the lesson and show how to add as many lights as we want.
+This cube is very familiar to us by now, as the pattern these lessons is to use what we already knew how to do when we introduce a new topic. Now let's get to the real meat of the lesson and show how to add as many lights as we want.
 
 ## Multiple Lights
 

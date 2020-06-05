@@ -78,3 +78,9 @@ We're ready now to take our first stab at making a real rendering system. We won
 Let's take a bit of a break from "big picture" topics and implement a small feature that will give us the option to visually display where our light sources are in our scene.
 
 [Light Objects](doc_src/section_11_5.md)
+
+## Light III
+
+We're almost ready to move on to "advanced" topics, but first we have to revisit light one more time to complete our lighting model. This time we'll be adding "shininess."
+
+[Specular Reflection](doc_src/section_12.md)
