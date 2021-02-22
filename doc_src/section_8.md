@@ -275,11 +275,11 @@ Our sets have been updated as well. We no longer need to provide the ambient sub
 
 ```rust
 let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
-    .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
+    .begin_render_pass(framebuffers[image_num].clone(), SubpassContents::Inline, clear_values)
     .unwrap()
     .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), ())
     .unwrap()
-    .next_subpass(false)
+    .next_subpass(SubpassContents::Inline)
     .unwrap()
     .draw(directional_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), directional_set.clone(), ())
     .unwrap()
@@ -344,7 +344,7 @@ commands
     .unwrap()
     .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), ())
     .unwrap()
-    .next_subpass(false)
+    .next_subpass(SubpassContents::Inline)
     .unwrap();
 ```
 

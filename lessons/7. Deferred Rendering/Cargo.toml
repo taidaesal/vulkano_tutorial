@@ -1,12 +1,12 @@
 [package]
 name = "deferred_lesson"
-version = "0.19.0"
+version = "0.20.0"
 authors = ["taidaesal"]
 edition = "2018"
 
 [dependencies]
-vulkano = "0.19.0"
-winit = "0.22.0"
-vulkano-win = "0.19.0"
-vulkano-shaders = "0.19.0"
+vulkano = "0.20.0"
+winit = "0.24.0"
+vulkano-win = "0.20.0"
+vulkano-shaders = "0.20.0"
 nalgebra-glm = "0.7.0"

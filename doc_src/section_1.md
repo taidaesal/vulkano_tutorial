@@ -35,13 +35,13 @@ This crate solves a problem that surprises a lot of people learning about graphi
 The key thing to keep in mind is that Vulkan is how we use our *hardware* (usually a graphics card, sometimes integrated rendering hardware) to turn data into graphical output. However, the actual user interface (UI) is a bit of *software* that's provided by the host operating system. Vulkan, like OpenGL before it, is explicitly operating system agnostic which is just a fancy way of saying that it will never contain code that will only work on Windows or Linux or any other single platform. To interact with the operating system itself and do things like open windows or get user input we need to use a second crate.
 
 ```toml
-vulkano-win = "0.19.0"
+vulkano-win = "0.20.0"
 ```
 
 This is the other part of our "how do we get Vulkan to talk to our UI" problem. The `winit` crate lets us open a window for whatever operating system we're using but there still needs to be a connection between our new window and our graphics API. This crate is a small bit of code that lets us go "hey, you can put your graphics in this window." It would be possible to roll this functionality into the same crate as the window-handling code and this is the strategy used by a number of other libraries you might find out there; however, the `winit` maintainers have kept a tight focus on their project scope.
 
 ```toml
-vulkano-shaders = "0.19.0"
+vulkano-shaders = "0.20.0"
 ```
 
 I'm kind of cheating by listing this dependency in this section since we won't be using it for this lesson, but we will be using it in every other one so we might as well talk about it now.
@@ -58,7 +58,7 @@ Vulkan is a powerful API but that power comes with a trade-off in the form of a 
 The first section is straight-forward enough as it's just the list of dependencies. You should recognize the root crates from our discussion of our `Cargo.toml` file. The actual data types and functions being imported will be introduced later as they're used. Everything after this block will be inside our `main` method.
 
 ```rust
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract};
 use vulkano::image::SwapchainImage;
@@ -427,7 +427,7 @@ Recent changes to the Vulkano library have separated this process into two steps
 ```rust
 let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
 cmd_buffer_builder
-    .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
+    .begin_render_pass(framebuffers[image_num].clone(), SubpassContents::Inline, clear_values)
     .unwrap()
     .end_render_pass()
     .unwrap();
