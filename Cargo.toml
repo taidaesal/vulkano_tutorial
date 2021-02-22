@@ -1,0 +1,16 @@
+[workspace]
+members = [
+    "lessons/1. Initialization",
+    "lessons/2. Triangle",
+    "lessons/3. Transformations and Uniforms",
+    "lessons/4. Depth",
+    "lessons/5. Face and Winding Order",
+    "lessons/6. Light I",
+    "lessons/7. Deferred Rendering",
+    "lessons/8. Light II",
+    "lessons/9. Model Loading",
+    "lessons/10. Uniform Refactoring",
+    "lessons/11. First Rendering System",
+    "lessons/11.5. Light Objects",
+    "lessons/12. Light III",
+]

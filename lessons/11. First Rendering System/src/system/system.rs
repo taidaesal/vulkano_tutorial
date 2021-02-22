@@ -11,7 +11,7 @@ use crate::model::Model;
 use crate::system::DirectionalLight;
 
 use vulkano::buffer::{BufferAccess, BufferUsage, CpuAccessibleBuffer, CpuBufferPool};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
 use vulkano::descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet};
 use vulkano::descriptor::pipeline_layout::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions, Queue};
@@ -386,7 +386,7 @@ impl System {
 
         let mut commands = self.commands.take().unwrap();
         commands
-            .next_subpass(false)
+            .next_subpass(SubpassContents::Inline)
             .unwrap()
             .draw(self.ambient_pipeline.clone(),
                   &self.dynamic_state,
@@ -625,7 +625,7 @@ impl System {
 
         let mut commands = AutoCommandBufferBuilder::primary_one_time_submit(self.device.clone(), self.queue.family()).unwrap();
         commands
-            .begin_render_pass(self.framebuffers[img_index].clone(), false, clear_values)
+            .begin_render_pass(self.framebuffers[img_index].clone(), SubpassContents::Inline, clear_values)
             .unwrap();
         self.commands = Some(commands);
 

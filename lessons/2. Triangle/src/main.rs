@@ -7,7 +7,7 @@
 // the MIT license
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
 use vulkano::image::SwapchainImage;
@@ -186,7 +186,7 @@ void main() {
 
                 let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
                 cmd_buffer_builder
-                    .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
+                    .begin_render_pass(framebuffers[image_num].clone(), SubpassContents::Inline, clear_values)
                     .unwrap()
                     .draw(pipeline.clone(), &dynamic_state, vertex_buffer.clone(), (), ())
                     .unwrap()

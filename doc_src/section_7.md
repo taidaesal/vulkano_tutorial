@@ -298,11 +298,11 @@ In this case we just use black for our new attachments.
 
 The new set of render commands we want to look at are these:
 ```rust
-.begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
+.begin_render_pass(framebuffers[image_num].clone(), SubpassContents::Inline, clear_values)
 .unwrap()
 .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), ())
 .unwrap()
-.next_subpass(false)
+.next_subpass(SubpassContents::Inline)
 .unwrap()
 .draw(lighting_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), lighting_set.clone(), ())
 .unwrap()

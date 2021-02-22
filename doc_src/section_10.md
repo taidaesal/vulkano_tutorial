@@ -64,7 +64,7 @@ So far all our uniforms have been created using `CpuBufferPool`. This is because
 
 Replace the existing mvp_buffer declaration with the following code. Also remember to add it into our swapchain recreation logic.
 ```rust
-let mut vp_buffer = CpuAccessibleBuffer::from_data(
+let vp_buffer = CpuAccessibleBuffer::from_data(
     device.clone(),
     BufferUsage::all(),
     false,
@@ -91,7 +91,7 @@ if recreate_swapchain {
     color_buffer = new_color_buffer;
     normal_buffer = new_normal_buffer;
 
-    vp_buffer = CpuAccessibleBuffer::from_data(
+    let new_vp_buffer = CpuAccessibleBuffer::from_data(
         device.clone(),
         BufferUsage::all(),
         false,
@@ -103,7 +103,7 @@ if recreate_swapchain {
 
     let deferred_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
     vp_set = Arc::new(PersistentDescriptorSet::start(deferred_layout.clone())
-        .add_buffer(vp_buffer.clone()).unwrap()
+        .add_buffer(new_vp_buffer.clone()).unwrap()
         .build().unwrap());
 
     recreate_swapchain = false;

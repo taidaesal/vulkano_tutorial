@@ -817,7 +817,7 @@ impl System {
 
         let mut commands = AutoCommandBufferBuilder::primary_one_time_submit(self.device.clone(), self.queue.family()).unwrap();
         commands
-            .begin_render_pass(self.framebuffers[img_index].clone(), false, clear_values)
+            .begin_render_pass(self.framebuffers[img_index].clone(), SubpassContents::Inline, clear_values)
             .unwrap();
         self.commands = Some(commands);
 

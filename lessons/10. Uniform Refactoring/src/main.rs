@@ -10,7 +10,7 @@ mod model;
 mod obj_loader;
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::descriptor::pipeline_layout::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
@@ -162,7 +162,7 @@ fn main() {
     let ambient_vert = ambient_vert::Shader::load(device.clone()).unwrap();
     let ambient_frag = ambient_frag::Shader::load(device.clone()).unwrap();
 
-    let mut vp_buffer = CpuAccessibleBuffer::from_data(
+    let vp_buffer = CpuAccessibleBuffer::from_data(
         device.clone(),
         BufferUsage::all(),
         false,
@@ -337,7 +337,7 @@ fn main() {
                     color_buffer = new_color_buffer;
                     normal_buffer = new_normal_buffer;
 
-                    vp_buffer = CpuAccessibleBuffer::from_data(
+                    let new_vp_buffer = CpuAccessibleBuffer::from_data(
                         device.clone(),
                         BufferUsage::all(),
                         false,
@@ -349,7 +349,7 @@ fn main() {
 
                     let deferred_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
                     vp_set = Arc::new(PersistentDescriptorSet::start(deferred_layout.clone())
-                        .add_buffer(vp_buffer.clone()).unwrap()
+                        .add_buffer(new_vp_buffer.clone()).unwrap()
                         .build().unwrap());
 
                     recreate_swapchain = false;
@@ -411,11 +411,11 @@ fn main() {
 
                 let mut commands = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
                 commands
-                    .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
+                    .begin_render_pass(framebuffers[image_num].clone(), SubpassContents::Inline, clear_values)
                     .unwrap()
                     .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), (vp_set.clone(), model_set.clone()), ())
                     .unwrap()
-                    .next_subpass(false)
+                    .next_subpass(SubpassContents::Inline)
                     .unwrap();
 
                 let directional_layout = directional_pipeline.descriptor_set_layout(0).unwrap();

@@ -6,7 +6,7 @@
 // from code provided by the Vulkano project under
 // the MIT license
 
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract};
 use vulkano::image::SwapchainImage;
@@ -128,7 +128,7 @@ fn main() {
 
                 let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
                 cmd_buffer_builder
-                    .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
+                    .begin_render_pass(framebuffers[image_num].clone(), SubpassContents::Inline, clear_values)
                     .unwrap()
                     .end_render_pass()
                     .unwrap();
