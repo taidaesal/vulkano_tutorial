@@ -534,7 +534,7 @@ Looks pretty good. It's a single, relatively simple, graphical effect yet our sc
 
 Not to discourage you from enjoying your success, but there is a problem buried deep in our code. Yes, we have a lighting system and, sure, we could keep expanding it by adding specular lighting, bloom, or any number of things. But consider this: how would we add a *second* light to our scene?
 
-As it is now the only way we could add a second directional light to our scene would be to add a second directional light uniform into our shader. That's not very elegant but it *would* work. The problem is, we don't want to stop at *just* two light sources. A real scene, or even just an example scene using a toy rendering system, might have dozens of light sources. To make things worse, the number of light sources might change while the scene is still running. If we have to hard-code each and every light source into our shader we'd quickly run into insurmountable problems.
+As it is now the only way we could add a second directional light to our scene would be to add a second directional light uniform into our shader. That's not very elegant, but it *would* work. The problem is, we don't want to stop at *just* two light sources. A real scene, or even just an example scene using a toy rendering system, might have dozens of light sources. To make things worse, the number of light sources might change while the scene is still running. If we have to hard-code each and every light source into our shader we'd quickly run into insurmountable problems.
 
 Luckily, we have a solution in the form of a feature we've hinted at multiple times before: multi-stage rendering. This is what we're looking at in the next lesson.
 

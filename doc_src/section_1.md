@@ -7,27 +7,27 @@ The first thing we'll do is creating our `Cargo.toml` file. The dependencies lis
 ```toml
 [package]
 name = "example_project"
-version = "0.19.0"
+version = "0.20.0"
 authors = ["yourname"]
 edition = "2018"
 
 [dependencies]
-vulkano = "0.19.0"
-winit = "0.22"
-vulkano-win = "0.19.0"
-vulkano-shaders = "0.19.0"
+vulkano = "0.20.0"
+winit = "0.24.0"
+vulkano-win = "0.20.0"
+vulkano-shaders = "0.20.0"
 ```
 
 Let's go over the dependencies one by one.
 ```toml
-vulkano = "0.19.0"
+vulkano = "0.20.0"
 ```
 This is the main library ("crate" in Rust-speak) that we'll be using. This crate wraps the Vulkan API with its own Rust API so that we can call it from our application. We could use the Vulkan API directly if we really wanted to but that would be far more difficult than necessary as well as producing ugly code that doesn't follow Rust idioms. This is because the main Vulkan API is in C and can only be interacted with using Rust's Foreign Function Interface (FFI) mechanism. Although Rust is designed to interface with C when necessary, why would we do that when we have a lovely crate to wrap it all up in a nice Rusty bow for us?
 
 There is a small trade-off here because if you want to go from using Vulkano to using Vulkan directly there will be a learning curve as you get to grips with the native C API. However, learning Vulkano will teach you all the core concepts of Vulkan so it likely won't be that much work to make the change later.
 
 ```toml
-winit = "0.22"
+winit = "0.24.0"
 ```
 
 This crate solves a problem that surprises a lot of people learning about graphics programming for the first time: our main graphics API (Vulkan in this case) doesn't actually provide a way to show anything on the screen! On first glance this seems a bit crazy. After all, isn't the whole *point* of something like Vulkan or OpenGL to show something on the screen? Well, yes and no.

@@ -84,3 +84,9 @@ Let's take a bit of a break from "big picture" topics and implement a small feat
 We're almost ready to move on to "advanced" topics, but first we have to revisit light one more time to complete our lighting model. This time we'll be adding "shininess."
 
 [Specular Reflection](doc_src/section_12.md)
+
+## Textures
+
+A brief look at textures and a discussion of their uses. 
+
+[Textures](doc_src/section_13.md)

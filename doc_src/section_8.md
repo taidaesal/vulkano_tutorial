@@ -296,7 +296,7 @@ The only change here is that we've added a second `.draw()` command for our ambi
 
 ![shows the same image of a lit cube that we've been generating in the last two lessons](../doc_imgs/8/single_light.png)
 
-This cube is very familiar to us by now, as the pattern these lessons is to use what we already knew how to do when we introduce a new topic. Now let's get to the real meat of the lesson and show how to add as many lights as we want.
+This cube is very familiar to us by now, as the pattern of these lessons is to use what we already knew how to do when we introduce a new topic. Now let's get to the real meat of the lesson and show how to add as many lights as we want.
 
 ## Multiple Lights
 
