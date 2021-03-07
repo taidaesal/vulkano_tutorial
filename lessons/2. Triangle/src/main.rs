@@ -188,7 +188,7 @@ void main() {
                 cmd_buffer_builder
                     .begin_render_pass(framebuffers[image_num].clone(), SubpassContents::Inline, clear_values)
                     .unwrap()
-                    .draw(pipeline.clone(), &dynamic_state, vertex_buffer.clone(), (), ())
+                    .draw(pipeline.clone(), &dynamic_state, vertex_buffer.clone(), (), (), vec![])
                     .unwrap()
                     .end_render_pass()
                     .unwrap();

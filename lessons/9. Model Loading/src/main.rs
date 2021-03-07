@@ -383,7 +383,7 @@ fn main() {
                 commands
                     .begin_render_pass(framebuffers[image_num].clone(), SubpassContents::Inline, clear_values)
                     .unwrap()
-                    .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), ())
+                    .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), (), vec![])
                     .unwrap()
                     .next_subpass(SubpassContents::Inline)
                     .unwrap();
@@ -396,11 +396,11 @@ fn main() {
                     .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
                     .build().unwrap());
                 commands
-                    .draw(directional_pipeline.clone(), &dynamic_state, dummy_verts.clone(), directional_set.clone(), ())
+                    .draw(directional_pipeline.clone(), &dynamic_state, dummy_verts.clone(), directional_set.clone(), (), vec![])
                     .unwrap();
 
                 commands
-                    .draw(ambient_pipeline.clone(), &dynamic_state, dummy_verts.clone(), ambient_set.clone(), ())
+                    .draw(ambient_pipeline.clone(), &dynamic_state, dummy_verts.clone(), ambient_set.clone(), (), vec![])
                     .unwrap()
                     .end_render_pass()
                     .unwrap();

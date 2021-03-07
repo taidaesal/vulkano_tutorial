@@ -372,11 +372,11 @@ fn main() {
                 cmd_buffer_builder
                     .begin_render_pass(framebuffers[image_num].clone(), SubpassContents::Inline, clear_values)
                     .unwrap()
-                    .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), ())
+                    .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), (), vec![])
                     .unwrap()
                     .next_subpass(SubpassContents::Inline)
                     .unwrap()
-                    .draw(lighting_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), lighting_set.clone(), ())
+                    .draw(lighting_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), lighting_set.clone(), (), vec![])
                     .unwrap()
                     .end_render_pass()
                     .unwrap();
