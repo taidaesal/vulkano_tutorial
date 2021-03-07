@@ -143,7 +143,7 @@ And that's it, as far as basic data passing goes. We're done with our setup and 
 Go down to where we declared our `command_buffer` variable. In between the lines `.begin_render_pass` and `.end_render_pass` add the following line of code.
 
 ```rust
-.draw(pipeline.clone(), &dynamic_state, vertex_buffer.clone(), (), ()).unwrap()
+.draw(pipeline.clone(), &dynamic_state, vertex_buffer.clone(), (), (), vec![]).unwrap()
 ```
 
 And that's it. The `draw` command takes in the pipeline we want to use for rendering and the data to render and that's enough for us. We already specified the details of *how* to draw to the screen when we created our pipeline, so here we can just tell Vulkan to go ahead and use it.

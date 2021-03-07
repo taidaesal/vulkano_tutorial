@@ -174,7 +174,7 @@ For descriptor sets we need to know two things: the graphics pipeline the set is
 The last thing we need to do in order to pass our uniforms to the shader is add our set to the draw command. Go down to where we make the command buffer and update the `.draw()` method so it looks like this:
 
 ```rust
-.draw(pipeline.clone(), &dynamic_state, vertex_buffer.clone(), set.clone(), ()).unwrap()
+.draw(pipeline.clone(), &dynamic_state, vertex_buffer.clone(), set.clone(), (), vec![]).unwrap()
 ```
 
 #### What if we want more than one uniform buffer?

@@ -255,7 +255,8 @@ impl System {
                   &self.dynamic_state,
                   vec![vertex_buffer.clone()],
                   vec![self.vp_set.clone(), model_set.clone()],
-                  ()
+                  (), 
+                  vec![]
             )
             .unwrap();
         self.commands = Some(commands);

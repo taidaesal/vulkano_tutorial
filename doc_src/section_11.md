@@ -1012,7 +1012,8 @@ impl System {
                   &self.dynamic_state,
                   vec![vertex_buffer.clone()],
                   vec![self.vp_set.clone(), model_set.clone()],
-                  ()
+                  (),
+                  vec![]
             )
             .unwrap();
         self.commands = Some(commands);
@@ -1123,7 +1124,9 @@ impl System {
                   &self.dynamic_state,
                   vec![self.dummy_verts.clone()],
                   ambient_set.clone(),
-                  ())
+                  (), 
+                  vec![]
+            )
             .unwrap();
         self.commands = Some(commands);
     }
@@ -1178,7 +1181,9 @@ impl System {
                 &self.dynamic_state,
                 vec![self.dummy_verts.clone()],
                 directional_set.clone(),
-                ())
+                (), 
+                vec![]
+            )
             .unwrap();
         self.commands = Some(commands);
     }

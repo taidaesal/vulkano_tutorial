@@ -277,13 +277,13 @@ Our sets have been updated as well. We no longer need to provide the ambient sub
 let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
     .begin_render_pass(framebuffers[image_num].clone(), SubpassContents::Inline, clear_values)
     .unwrap()
-    .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), ())
+    .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), (), vec![])
     .unwrap()
     .next_subpass(SubpassContents::Inline)
     .unwrap()
-    .draw(directional_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), directional_set.clone(), ())
+    .draw(directional_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), directional_set.clone(), (), vec![])
     .unwrap()
-    .draw(ambient_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), ambient_set.clone(), ())
+    .draw(ambient_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), ambient_set.clone(), (), vec![])
     .unwrap()
     .end_render_pass()
     .unwrap()
@@ -342,7 +342,7 @@ let mut commands = AutoCommandBufferBuilder::primary_one_time_submit(device.clon
 commands
     .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
     .unwrap()
-    .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), ())
+    .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), (), vec![])
     .unwrap()
     .next_subpass(SubpassContents::Inline)
     .unwrap();
@@ -366,7 +366,7 @@ We use our helper function for the first time here to declare our usual `directi
 Next we append the rendering commands to our command buffer building.
 ```rust
 commands
-    .draw(directional_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), directional_set.clone(), ())
+    .draw(directional_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), directional_set.clone(), (), vec![])
     .unwrap();
 ```
 
@@ -380,7 +380,7 @@ directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clo
     .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
     .build().unwrap());
 commands
-    .draw(directional_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), directional_set.clone(), ())
+    .draw(directional_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), directional_set.clone(), (), vec![])
     .unwrap();
 
 directional_uniform_subbuffer = generate_directional_buffer(&directional_buffer, &directional_light_b);
@@ -391,14 +391,14 @@ directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clo
     .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
     .build().unwrap());
 commands
-    .draw(directional_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), directional_set.clone(), ())
+    .draw(directional_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), directional_set.clone(), (), vec![])
     .unwrap();
 ```
 
 Lastly, let's draw our ambient buffer and finish our command buffer.
 ```rust
 commands
-    .draw(ambient_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), ambient_set.clone(), ())
+    .draw(ambient_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), ambient_set.clone(), (), vec![])
     .unwrap()
     .end_render_pass()
     .unwrap();

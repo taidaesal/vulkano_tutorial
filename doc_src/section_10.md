@@ -224,7 +224,7 @@ The only real thing to notice is that we used `1` as the argument for the descri
 Our draw command for the first render pass is pretty much the same as before. However, now we need to pass it two descriptor sets instead of one. The way to do this is fairly straightforward.
 
 ```rust
-.draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), (vp_set.clone(), model_set.clone()), ())
+.draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), (vp_set.clone(), model_set.clone()), (), vec![])
 ```
 
 As you can see, we just pass a list of the descriptor sets inside of parenthesis.
