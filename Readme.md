@@ -90,3 +90,9 @@ We're almost ready to move on to "advanced" topics, but first we have to revisit
 A brief look at textures and a discussion of their uses. 
 
 [Textures](doc_src/section_13.md)
+
+## Text
+
+A look at how to use textures to display a timer to the user.
+
+[Text](doc_src/section_14.md)
