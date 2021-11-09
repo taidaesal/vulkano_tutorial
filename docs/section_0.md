@@ -1,6 +1,6 @@
 ---
-page.layout: post
-page.title: Intro To Vulkan
+layout: post
+title: Intro To Vulkan
 
 ---
 
