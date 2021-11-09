@@ -1,4 +1,4 @@
-// Copyright (c) 2020 taidaesal
+// Copyright (c) 2021 taidaesal
 // Licensed under the MIT license
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>
 //
@@ -6,16 +6,19 @@
 // from code provided by the Vulkano project under
 // the MIT license
 
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, SubpassContents};
 use vulkano::device::{Device, DeviceExtensions};
-use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract};
+use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::image::SwapchainImage;
-use vulkano::instance::{Instance, PhysicalDevice};
+use vulkano::image::view::ImageView;
+use vulkano::instance::Instance;
 use vulkano::pipeline::viewport::Viewport;
+use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain::{AcquireError, ColorSpace, FullscreenExclusive, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
 use vulkano::swapchain;
 use vulkano::sync::{GpuFuture, FlushError};
 use vulkano::sync;
+use vulkano::Version;
 
 use vulkano_win::VkSurfaceBuild;
 
@@ -28,13 +31,15 @@ use std::sync::Arc;
 fn main() {
     let instance = {
         let extensions = vulkano_win::required_extensions();
-        Instance::new(None, &extensions, None).unwrap()
+        Instance::new(None, Version::V1_1, &extensions, None).unwrap()
     };
 
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-    println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
+    println!("Using device: {} (type: {:?})", physical.properties().device_name, physical.properties().device_type);
+    println!("Our physical device supports Vulkan: {:?}", physical.properties().api_version);
 
-    let event_loop = EventLoop::new();
+
+    /*let event_loop = EventLoop::new();
     let surface = WindowBuilder::new().build_vk_surface(&event_loop, instance.clone()).unwrap();
 
     let queue_family = physical.queue_families().find(|&q| {
@@ -54,7 +59,7 @@ fn main() {
         let format = caps.supported_formats[0].0;
         let dimensions: [u32; 2] = surface.window().inner_size().into();
 
-        Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
+        Swapchain::new(device.start(), surface.clone(), caps.min_image_count, format,
                        dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
                        PresentMode::Fifo, FullscreenExclusive::Default, true, ColorSpace::SrgbNonLinear).unwrap()
     };
@@ -79,9 +84,13 @@ fn main() {
 
     // pipeline would be declared here
 
-    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None, compare_mask: None, write_mask: None, reference: None };
+    let mut viewport = Viewport {
+        origin: [0.0, 0.0],
+        dimensions: [0.0, 0.0],
+        depth_range: 0.0..1.0,
+    };
 
-    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
+    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
     let mut recreate_swapchain = false;
 
@@ -107,7 +116,7 @@ fn main() {
                     };
 
                     swapchain = new_swapchain;
-                    framebuffers = window_size_dependent_setup(&new_images, render_pass.clone(), &mut dynamic_state);
+                    framebuffers = window_size_dependent_setup(&new_images, render_pass.clone(), &mut viewport);
                     recreate_swapchain = false;
                 }
 
@@ -156,30 +165,30 @@ fn main() {
             },
             _ => ()
         }
-    });
+    });*/
 }
 
 /// This method is called once during initialization, then again whenever the window is resized
 /// stolen from the vulkano example
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
-    dynamic_state: &mut DynamicState
-) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
+    render_pass: Arc<RenderPass>,
+    viewport: &mut Viewport,
+) -> Vec<Arc<dyn FramebufferAbstract>> {
     let dimensions = images[0].dimensions();
+    viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
-    let viewport = Viewport {
-        origin: [0.0, 0.0],
-        dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-        depth_range: 0.0 .. 1.0,
-    };
-    dynamic_state.viewports = Some(vec!(viewport));
-
-    images.iter().map(|image| {
-        Arc::new(
-            Framebuffer::start(render_pass.clone())
-                .add(image.clone()).unwrap()
-                .build().unwrap()
-        ) as Arc<dyn FramebufferAbstract + Send + Sync>
-    }).collect::<Vec<_>>()
+    images
+        .iter()
+        .map(|image| {
+            let view = ImageView::new(image.clone()).unwrap();
+            Arc::new(
+                Framebuffer::start(render_pass.clone())
+                    .add(view)
+                    .unwrap()
+                    .build()
+                    .unwrap(),
+            ) as Arc<dyn FramebufferAbstract>
+        })
+        .collect::<Vec<_>>()
 }
