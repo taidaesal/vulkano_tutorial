@@ -17,7 +17,7 @@ The cargo version of each example will correspond to the version of the Vulkano 
 
 ## Introduction to Vulkan
 
-![vulkan api logo](../doc_imgs/0/vulkan_logo.png)
+![vulkan api logo](./imgs/0/vulkan_logo.png)
 
 #### What is it?
 
@@ -35,7 +35,7 @@ Once you understand the different structures used by Vulkan it is easier to do w
 
 ## Introduction to Rust
 
-![icon used by the Rust programming language](../doc_imgs/0/rust_logo.png)
+![icon used by the Rust programming language](./imgs/0/rust_logo.png)
 
 #### What is it?
 

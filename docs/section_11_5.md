@@ -315,7 +315,7 @@ fn main() {
 
 Running the code shows this:
 
-![image showing an illuminated teapot along with a sphere representing light position](../doc_imgs/11_5/illuminated_teapot.png)
+![image showing an illuminated teapot along with a sphere representing light position](./imgs/11_5/illuminated_teapot.png)
 
 #### Adding Scale
 
@@ -395,7 +395,7 @@ Updating our rendering code to use a fixed scale factor of `0.2` is as simple as
 
 Running our code now produces a light object much more reasonable in size.
 
-![an illuminated teapot with a scaled light source](../doc_imgs/11_5/illuminated_teapot_2.png)
+![an illuminated teapot with a scaled light source](./imgs/11_5/illuminated_teapot_2.png)
 
 ## Adding Movement
 
@@ -457,11 +457,11 @@ Here we have a circle with a radius of 2 set on its side by replacing the y valu
 
 Let's run the code and see what it looks like:
 
-![picture of a sphere with an orbiting light](../doc_imgs/11_5/sphere_1.png)
+![picture of a sphere with an orbiting light](./imgs/11_5/sphere_1.png)
 
 Looks pretty good. If we had this as a stationary scene we could congratulate ourselves on a job well-done and move on. However, let's let the scene keep running until the light moves behind our center sphere.
 
-![picture of a sphere with the orbiting light behind it](../doc_imgs/11_5/sphere_2.png)
+![picture of a sphere with the orbiting light behind it](./imgs/11_5/sphere_2.png)
 
 The front of our model isn't being illuminated, which is good. But what's going on with the light object still showing up? 
 

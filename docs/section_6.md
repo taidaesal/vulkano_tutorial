@@ -117,7 +117,7 @@ void main() {
 
 Let's stop right now and run our code to see what it looks like.
 
-![an image of a cube seen from directly ahead so that it looks like a square](../doc_imgs/6/static_cube.png)
+![an image of a cube seen from directly ahead so that it looks like a square](./imgs/6/static_cube.png)
 
 Looks pretty good and shows that our new cube vertex information is being fed in correctly. It's hard to really appreciate the 3D nature of the cube when seen head-on like this and it also won't really show off the lighting effects we're going to add later. Let's add some rotation to the cube to rectify this.
 
@@ -146,7 +146,7 @@ let uniform_buffer_subbuffer = {
 
 This should be familiar from our lesson on uniforms which is why I'm not pausing to go through it in detail. The only real change is that we're doing rotations around all three axis, so that the cube moves in a more interesting way.
 
-![a picture of a cube in mid-rotation demonstrating that the lack of lighting makes everything seem two-dimensional](../doc_imgs/6/rotating_cube.png)
+![a picture of a cube in mid-rotation demonstrating that the lack of lighting makes everything seem two-dimensional](./imgs/6/rotating_cube.png)
 
 It's not really possible to capture the full effect of a moving scene in a still image but I think this demonstrates the key problem: our cube just looks *wrong*. Why is this though? After all, our model is indeed a 3D cube and our rotation is showing off multiple sides and angles that should demonstrate that. But it still looks...off.
 
@@ -250,11 +250,11 @@ let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
 
 That's it for the new code we have to write for our ambient lighting system. Now let's fire it up and see what it looks like.
 
-![a cube demonstrating that our current ambient lighting settings will reproduce the same look we've had before](../doc_imgs/6/ambient_1.png)
+![a cube demonstrating that our current ambient lighting settings will reproduce the same look we've had before](./imgs/6/ambient_1.png)
 
 It looks...exactly the same. But that's good! It shows that our ambient lighting system is working and this is, indeed, the result we expected. A white light at 100% intensity is actually the same thing as not having a lighting system at all. Let's turn that intensity down to 30% and run it again.
 
-![image showing that dimming the ambient light does, indeed, dim the resulting color](../doc_imgs/6/ambient_2.png)
+![image showing that dimming the ambient light does, indeed, dim the resulting color](./imgs/6/ambient_2.png)
 
 That looks good. We dimmed the light and now the object isn't as bright. But what about the blue background? That looks as bright as ever.
 
@@ -264,13 +264,13 @@ The reason for that is because that blue is our *clear color*. Everything that's
 let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into(), 1f32.into()];
 ```
 
-![the same image as before, but with a black background](../doc_imgs/6/ambient_2b.png)
+![the same image as before, but with a black background](./imgs/6/ambient_2b.png)
 
 Much better, I think.
 
 For the last experiment before we move on let's try changing the ambient color to green and turning the intensity back up to 100%
 
-![image showing that shining a bright green light colors the cube green](../doc_imgs/6/ambient_3.png)
+![image showing that shining a bright green light colors the cube green](./imgs/6/ambient_3.png)
 
 A bright green light...makes things look green! Not surprising, maybe, but a good sign for our code anyway.
 
@@ -410,7 +410,7 @@ let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
 
 Okay, we're all ready now for our fancy new lighting system. Just fire it up and...
 
-![image showing unexpected error](../doc_imgs/6/error.png)
+![image showing unexpected error](./imgs/6/error.png)
 
 ...what?
 
@@ -526,7 +526,7 @@ let directional_uniform_subbuffer = {
 
 I prefer solution 2 but it's up to you what you'd like to do. Either one will work. Once you've made the changes you want, run the code and take a look at what we have now.
 
-![picture of a cube displaying directional lighting effects](../doc_imgs/6/lit_cube.png)
+![picture of a cube displaying directional lighting effects](./imgs/6/lit_cube.png)
 
 Looks pretty good. It's a single, relatively simple, graphical effect yet our scene looks miles better now than it did at the start of the lesson. Creating your first 3D lighting system is a big milestone for a novice graphics developer, so just take a moment to appreciate how far you've come in just six lessons.
 

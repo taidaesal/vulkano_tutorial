@@ -14,7 +14,7 @@ The View matrix represents something called *Camera Space*. This is what space l
 
 Lastly we have the Projection matrix. Of all of them, this is the easiest. Going back to our triangle from the last lesson the dimensions are set by the window. Try resizing the window and see what it does to the triangle.
 
-![a triangle whose proportions have been changed by resizing the window](../doc_imgs/3/squished_triangle.png)
+![a triangle whose proportions have been changed by resizing the window](./imgs/3/squished_triangle.png)
 
 The triangle gets squished and elongated when we make the window narrower. A projection matrix is just a transformation we apply to a view so that everything stays in the appropriate proportions no matter what the relative dimensions of the view happen to be.
 
@@ -282,7 +282,7 @@ let uniform_buffer_subbuffer = {
 
 This sets the aspect ratio to be the same as our screen as sets the viewable area to be anything from depth 0.01 to 100.0. Run it again and you should see a triangle that looks basically the same, but which will not become distorted when you resize the window.
 
-![a triangle that maintains its appropriate ratio on screen resize](../doc_imgs/3/projection_triangle.png)
+![a triangle that maintains its appropriate ratio on screen resize](./imgs/3/projection_triangle.png)
 
 #### View Matrix
 
@@ -311,7 +311,7 @@ let uniform_buffer_subbuffer = {
 
 Run the code and you should see the following image.
 
-![a triangle oriented the right way up after adding our view matrix](../doc_imgs/3/view_triangle.png)
+![a triangle oriented the right way up after adding our view matrix](./imgs/3/view_triangle.png)
 
 As you can see, our triangle is now the right way round again. This is because the matrix produced by the `look_at` method will orient the scene along the up vector, which is what we're seeing here.
 
@@ -319,7 +319,7 @@ As you can see, our triangle is now the right way round again. This is because t
 
 Let's pause here to talk about the coordinate system used by Vulkan. What this means is just what do the different axis values mean? I'll produce a diagram.
 
-![a diagram displaying the coordinate system used by Vulkan](../doc_imgs/3/coordinates.png)
+![a diagram displaying the coordinate system used by Vulkan](./imgs/3/coordinates.png)
 
 Smaller x-values move to the left while larger x-values move to the right.
 
@@ -359,7 +359,7 @@ let uniform_buffer_subbuffer = {
 
 run the code and you should see something like this:
 
-![image of a triangle that has been moved up and to the right](../doc_imgs/3/translated_triangle.png)
+![image of a triangle that has been moved up and to the right](./imgs/3/translated_triangle.png)
 
 Note the translation vector, `&vec3(1.0, -1.0, 0.0)`, and remember that bigger x values move us to the right and smaller y-values move us up.
 
@@ -418,7 +418,7 @@ let uniform_buffer_subbuffer = {
 
 Run the code and you should see a triangle identical to the last one, just centered on the screen instead of moved up and to the right.
 
-![a triangle demonstrating that our updated mvp system is working](../doc_imgs/3/updated_triangle.png)
+![a triangle demonstrating that our updated mvp system is working](./imgs/3/updated_triangle.png)
 
 This is good as it means our cleaned-up MVP system is working as expected. However, I promised you something more interesting than a static triangle so let's see if we can't get this thing to rotate as well.
 

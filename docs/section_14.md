@@ -18,7 +18,7 @@ Between the two, vector fonts are by far the most commonly used in modern applic
 
 The second major topic we'll need to look at is *font-spacing*. Basically, how much space does each character get on the screen. The two options are *monospaced* where each character occupies the same amount of horizontal space and *proportional* where each character takes up an amount of horizontal space proportional to the actual width of the individual character. This is probably best seen with an illustration.
 
-![a picture of "217" in two spacing schemes with the character width shown with a box](../doc_imgs/14/spacing.png)
+![a picture of "217" in two spacing schemes with the character width shown with a box](./imgs/14/spacing.png)
 
 In the first line we see an example of *monospaced* text. Each character sits in the middle of an equally-sized "box" of space. The character "1" takes up much less space than "2" or "7" does, but this doesn't lead to less space being assigned to it. 
 
@@ -30,11 +30,11 @@ Font spacing is independent of whether the font itself is a bitmap font or a vec
 
 For the sake of simplicity we'll be writing a program that handles only the most basic case: a bitmapped, monospaced font that only contains digits. The input texture we're going to be using is shown below.
 
-![a bitmapped texture containing monospaced digits](../doc_imgs/14/texture_small.png)
+![a bitmapped texture containing monospaced digits](./imgs/14/texture_small.png)
 
 A zoomed-in version that marks the amount of space each character is assigned might make things more obvious.
 
-![the same image as above but with the allotted space per character marked and excess white space removed](../doc_imgs/14/marked_texture.png)
+![the same image as above but with the allotted space per character marked and excess white space removed](./imgs/14/marked_texture.png)
 
 Each character has been given a space 64x64 pixels large, no matter how much of that space the character uses. Compare the "0" to the "1". The "0" takes up most of its 64 pixel-wide space while the "1" takes up hardly any. 
 
@@ -78,7 +78,7 @@ let (texture, tex_future) = {
 ```
 
 If we run it we see:
-![image displaying the full bitmap texture](../doc_imgs/14/compressed.png)
+![image displaying the full bitmap texture](./imgs/14/compressed.png)
 
 This is compressed because we're displaying an image 1024 pixels wide by 64 pixels high in a square. We'll only be looking to display a couple of digits so this won't be an issue with our current program, but it's something we'd need to pay attention to if we wanted to create a GUI of our own.
 
@@ -157,7 +157,7 @@ impl Monospace {
 
 Here we see a method that takes in a numeric string, counts the number of digits, creates an output buffer large enough to hold those digits, and then copies the appropriate sections from the bitmap image to the output image. The main complication here is that in some places we want to know the position of things in pixels and sometimes we need the position of an individual byte in the array. Each pixel has four bytes worth of data so to convert from pixel position to byte position the pixel needs to be multiplied by 4. The picture below shows the same process in a more visual way.
 
-![an image helping to diagram how we copy data from the bitmap source to the new texture in order to produce an output](../doc_imgs/14/texture_map.png)
+![an image helping to diagram how we copy data from the bitmap source to the new texture in order to produce an output](./imgs/14/texture_map.png)
 
 
 #### Initial Test
@@ -186,7 +186,7 @@ let (texture, tex_future) = {
 
 If you run this, you should see the following.
 
-![a picture showing the number 201 displayed on screen](../doc_imgs/14/201.png)
+![a picture showing the number 201 displayed on screen](./imgs/14/201.png)
 
 Not pretty, but it is clearly legible so, success!
 
@@ -244,6 +244,6 @@ fn main() {
 
 As you can see, we're re-creating the texture every frame regardless of whether the value we want to display has changed. This is totally fine for this example application and, in fact, will probably be fine for any application we'll be creating as part of these tutorials. In a real application you won't want to recreate textures when you don't have to, so I leave it as homework to the reader to modify our code here to only create new textures as needed.
 
-![image of our application displaying a count value of 20](../doc_imgs/14/count.png)
+![image of our application displaying a count value of 20](./imgs/14/count.png)
 
 [Lesson Source Code](../lessons/14.%20Text)

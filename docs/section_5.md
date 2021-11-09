@@ -2,7 +2,7 @@
 
 Much like depth testing, up until now we've been overlooking a concept that's fundamental to getting complicated scenes to work: winding order. What's that you might ask? It's nothing more complicated than the order in which we specify a triangle's vertices. Consider the following diagram:
 
-![a picture of a triangle with the three vertices labeled from A to C](../doc_imgs/5/triangle.png)
+![a picture of a triangle with the three vertices labeled from A to C](./imgs/5/triangle.png)
 
 A triangle is defined by three vertices and, up until now, we've been listing them in whatever order we please; however, Vulkan would very much *like* to care about that order for reasons we'll touch on in a second.
 
@@ -52,7 +52,7 @@ let pipeline = Arc::new(GraphicsPipeline::start()
 
 Run the code and we should see the white triangle has disappeared, exactly as expected.
 
-![an image showing that only the triangle with the correct winding remains](../doc_imgs/5/culled_triangle.png)
+![an image showing that only the triangle with the correct winding remains](./imgs/5/culled_triangle.png)
 
 As with depth testing, we will be leaving this feature on for all future lessons.
 

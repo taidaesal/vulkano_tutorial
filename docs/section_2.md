@@ -150,7 +150,7 @@ And that's it. The `draw` command takes in the pipeline we want to use for rende
 
 In any case, let's run the program and see what we've got.
 
-![our first triangle](../doc_imgs/2/triangle.png)
+![our first triangle](./imgs/2/triangle.png)
 
 If you see the same thing, then congratulations! You have officially completed your first "Hello World" application in Vulkan.
 
@@ -239,7 +239,7 @@ let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::
 
 And that's it, a new input source defined and hooked up to our shaders. At this point, we can just run the program again and see the results.
 
-![updated triangle with more colors](../doc_imgs/2/colorful_triangle.png)
+![updated triangle with more colors](./imgs/2/colorful_triangle.png)
 
 Much more striking, I think you'll agree. In the next lesson we'll look at how to start manipulating our output to do things like rotate them or move them around.
 

@@ -485,7 +485,7 @@ In complicated programs it's likely that one or more of the operations we've jus
 
 If everything has gone well, we've finished! Just save your code, run `cargo run`, and bask in the glory of the results.
 
-![our first window](../doc_imgs/1/first_window.png)
+![our first window](./imgs/1/first_window.png)
 
 ...
 
@@ -495,7 +495,7 @@ Okay, "glory" might be overselling it a bit. To make it somewhat more interestin
 let clear_values = vec!([0.0, 0.68, 1.0, 1.0].into());
 ```
 
-![updated background color](../doc_imgs/1/updated_window.png)
+![updated background color](./imgs/1/updated_window.png)
 
 There, much better. Next time, we'll learn how to put something there.
 

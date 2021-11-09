@@ -2,11 +2,11 @@
 
 This lesson won't really introduce any new concepts we haven't seen before. Instead, this lesson will be how to use what we already know to apply as many directional lights to our scene as we want. The theory behind the process is simple: instead of having our second render pass overwrite anything in the final image each time it's run, we instead _blend_ the two together. This means that we can run our directional shader once per light source, each time adding its output to the final image.
 
-![diagram of a cube with three arrows showing the direction of the light sources](../doc_imgs/8/cube_lights.png)
+![diagram of a cube with three arrows showing the direction of the light sources](./imgs/8/cube_lights.png)
 
 This shows the position of the lights we'll be adding, as well as their colors. We'll be setting up the lights so they form a rough triangle around our cube. Each light will only strongly illuminate a single face, with some dim illumination of at most one other face. Additionally, there will be a low-intensity white ambient light.
 
-![a diagram showing how we will apply an additive process of combining our inputs to get a final output](../doc_imgs/8/combined_images.png)
+![a diagram showing how we will apply an additive process of combining our inputs to get a final output](./imgs/8/combined_images.png)
 
 
 ## Single-light Source
@@ -294,7 +294,7 @@ The only change here is that we've added a second `.draw()` command for our ambi
 
 #### Running the Code
 
-![shows the same image of a lit cube that we've been generating in the last two lessons](../doc_imgs/8/single_light.png)
+![shows the same image of a lit cube that we've been generating in the last two lessons](./imgs/8/single_light.png)
 
 This cube is very familiar to us by now, as the pattern of these lessons is to use what we already knew how to do when we introduce a new topic. Now let's get to the real meat of the lesson and show how to add as many lights as we want.
 
@@ -409,7 +409,7 @@ let command_buffer = commands.build().unwrap();
 
 That should be the last thing we need to do. Let's compile and run the code and see.
 
-![image showing the combined lighting effects of three colored lights](../doc_imgs/8/three_lights.png)
+![image showing the combined lighting effects of three colored lights](./imgs/8/three_lights.png)
 
 Excellent, it looks just like it should. It's been two long lessons, but we've finally seen how to do something we couldn't have done back in lesson 6. You can also see the emerging outline of the general rendering engine that we'll be working on in a few lessons. This process of building up the final scene by running sets of shaders over and over again will be the core of any engine.
 

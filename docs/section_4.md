@@ -20,7 +20,7 @@ let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::
 
 Pretty simple; we have two triangles, one behind the other. The one in front is black and the one in back is in white. Let's run the code and see what happens.
 
-![two triangles with the one that should be behind the other actually rendered in front of it](../doc_imgs/4/triangles_with_no_depth.png)
+![two triangles with the one that should be behind the other actually rendered in front of it](./imgs/4/triangles_with_no_depth.png)
 
 That...doesn't look right. The white triangle is supposed to be behind the black one but it's the other way around, what's going on? What we're lacking is *depth testing*, the mechanism where vulkan checks what depth each vertex is at. In other words, with depth testing enabled our graphics hardware will be able to draw back-to-front with the furthest away vertices being drawn first. Right now, the vertices are being drawn in the order they are received, which is why we currently have this problem.
 
@@ -125,7 +125,7 @@ Two things to notice here:
 
 Re-run our code and you should see that everything is now in the expected order with the black triangle in front of the white one.
 
-![two triangles showing correct depth ordering](../doc_imgs/4/fixed_depth_triangles.png)
+![two triangles showing correct depth ordering](./imgs/4/fixed_depth_triangles.png)
 
 Not the most exciting image, I know, but now that we have depth sorted out we are ready to start moving on to more complicated scenes.
 

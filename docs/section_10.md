@@ -233,7 +233,7 @@ As you can see, we just pass a list of the descriptor sets inside of parenthesis
 
 Let's run our application. Nothing should have changed in the rendered output but it's always good to check before moving on.
 
-![a picture of the Utah Teapot using the same lighting scheme as the previous lesson](../doc_imgs/10/teapot.png)
+![a picture of the Utah Teapot using the same lighting scheme as the previous lesson](./imgs/10/teapot.png)
 
 I've swapped out Suzanne for the famous Utah Teapot but, as you can see, everything seems to be working as it should.
 

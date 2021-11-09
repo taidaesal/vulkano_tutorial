@@ -38,9 +38,9 @@ This is only a small sub-set of the total functionality offered by the obj file 
 
 I've generated a number of model files and stored them in the folder at `src/models`. I used Blender to export the shapes and a number of them were provided by default or easily available. The following two images show how I exported the files. I stuck to "simple" models but you should be able to use the same process to produce something more complicated.
 
-![image showing the location of the export option in Blender](../doc_imgs/9/export_1.png)
+![image showing the location of the export option in Blender](./imgs/9/export_1.png)
 
-![image showing the options used while exporting files in Blender](../doc_imgs/9/export_2.png)
+![image showing the options used while exporting files in Blender](./imgs/9/export_2.png)
 
 In the second picture, notice that "Include UVs" is unchecked. This is entirely optional and, in fact, most of the models here do actually export their UV values. However, these values are used for texturing which is not a subject we will be getting into for a few more lessons now. The two most important options are "triangulate faces" and "keep vertex order." Without these two settings it may produce a file that can't be rendered correctly in a Vulkan application.
 
@@ -116,13 +116,13 @@ This is the other major change we're making. You can see that we have moved the 
 
 And that's it! There's a lot of new code on our backend but actually using it is simple. Let's run it and take a look.
 
-![a picture of a cube](../doc_imgs/9/cube.png)
+![a picture of a cube](./imgs/9/cube.png)
 
 At this point, this cube should seem like an old friend. As you can see, I reverted back to using a single white light source but if you left your lighting untouched from the last lesson it should look the same as it did back then.
 
 Let's move on to a more complicated model. Included in our `models` directory is a file for [Suzanne](https://en.wikipedia.org/wiki/Blender_(software)#Suzanne,_the_%22monkey%22_mascot). This is a common [standard reference object](https://en.wikipedia.org/wiki/List_of_common_3D_test_models) used in 3D rendering similar to the famous [Utah teapot](https://en.wikipedia.org/wiki/Utah_teapot). It is also the mascot for the open-source [Blender](https://www.blender.org/) 3D modeling and animation program. The image blow is what Suzanne looks like inside Blender.
 
-![a picture of a 3D rendering of a monkey's head affectionately named Suzanne](../doc_imgs/9/suzanne_blender.png)
+![a picture of a 3D rendering of a monkey's head affectionately named Suzanne](./imgs/9/suzanne_blender.png)
 
 Still a pretty simple model, if we go by the number of vertices, but still light-years away from the simple shapes we've been using until this point. Let's add the following changes to our code and then run it.
 
@@ -131,7 +131,7 @@ let mut cube = Model::new("./src/models/suzanne.obj").build();
 cube.translate(vec3(0.0, 0.0, -1.5));
 ```
 
-![a picture of suzanne showing apparent transparency](../doc_imgs/9/suzanne_1.png)
+![a picture of suzanne showing apparent transparency](./imgs/9/suzanne_1.png)
 
 Well that's kind of horrifying. What's gone wrong?
 
@@ -323,7 +323,7 @@ let command_buffer = commands.build().unwrap();
 
 Let's execute the code and see what happens.
 
-![picture showing correctly rendered version of Suzanne](../doc_imgs/9/suzanne_2.png)
+![picture showing correctly rendered version of Suzanne](./imgs/9/suzanne_2.png)
 
 There's the friendly and slightly pointy monkey we were hoping for. With our new ability to load complex models, we've taken a major step towards our goal of a working rendering system.
 

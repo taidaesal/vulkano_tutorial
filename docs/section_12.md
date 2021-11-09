@@ -6,7 +6,7 @@ So far, we've made due with a simplified lighting system that only considers the
 
 Consider the following image. 
 
-![image showing a gold artifact and rubber ball in direct lighting](../doc_imgs/12/gold_and_rubber.png)
+![image showing a gold artifact and rubber ball in direct lighting](./imgs/12/gold_and_rubber.png)
 
 On one side we have ancient gold earrings as seen in a museum and on the other we have a product picture of a rubber ball for sale on Amazon. Both are well-lit with the main light being above and to the side compared to the camera. If we were to render models of these objects in our rendering system as it exists now both the gold and the rubber would have the same level of "shininess" and would look much the same over all. But that's clearly not how it works in real life. This lesson will look at how we can make our rendering system output something at least a little closer to reality.
 
@@ -14,7 +14,7 @@ On one side we have ancient gold earrings as seen in a museum and on the other w
 
 For the first time in this tutorial series I'm going to resort to mathematical diagrams to illustrate the point. The following depicts what we have been doing so far.
 
-![diagram depicting a surface, the surface normal, and the angle between the surface normal and a light ray](../doc_imgs/12/directional.png)
+![diagram depicting a surface, the surface normal, and the angle between the surface normal and a light ray](./imgs/12/directional.png)
 
 This diagram shows our vertex as an orange triangle. The vertex normal is represented by a green arrow and labeled `N̅`. Our light source is represented by a yellow circle and is casting a ray, `L̅`, towards our vertex. The angle between the two is labeled with the Greek letter theta, `θ`, and is what we use to calculate the *directional intensity* of the light.
 
@@ -24,7 +24,7 @@ This is, no doubt, very fascinating but is only half of the scene. After all, wh
 
 The full version of the diagram, and the one we will be implementing in this lesson, is this:
 
-![the same diagram as above but containing the reflection and viwer vectors](../doc_imgs/12/specular.png)
+![the same diagram as above but containing the reflection and viwer vectors](./imgs/12/specular.png)
 
 When the light ray `L̅` strikes the surface it is reflected off. In the above diagram we've labeled this *reflection vector* with `R̅`. We've also added a camera off to one side. This camera represents where the *viewer* position is relative to the surface. We've marked the vector from the camera to the surface with a dotted line labeled `V̅`. The angle between the reflection vector and the view vector we've labeled alpha, `α`.
 
@@ -387,7 +387,7 @@ void main() {
 ```
 comment out the combined code and just show the specular highlights and run the code.
 
-![a cube face showing the calculated spcular highlight](../doc_imgs/12/specular_only.png)
+![a cube face showing the calculated spcular highlight](./imgs/12/specular_only.png)
 
 This is what we're trying to find. The bright spot created when a light source shines onto a reflective object. The size and brightness of this spot are controlled by the specular data uniform we pass in to the deferred shader.
 
@@ -403,7 +403,7 @@ void main() {
 }
 ```
 
-![a cube face showing the specular highlight combined with the rest of the lighting system](../doc_imgs/12/lit_cube.png)
+![a cube face showing the specular highlight combined with the rest of the lighting system](./imgs/12/lit_cube.png)
 
 Looking good. Now, let's modify our code to use a more complicated model and do the same thing.
 
@@ -420,11 +420,11 @@ fn main() {
 
 Now run the program using only the specular highlights.
 
-![the suzanne model lit only with specular highlights](../doc_imgs/12/suzanne_specular_only.png)
+![the suzanne model lit only with specular highlights](./imgs/12/suzanne_specular_only.png)
 
 Now the same model with the full range of lighting turned on.
 
-![the suzanne model lit with the full lighting model](../doc_imgs/12/suzanne_full.png)
+![the suzanne model lit with the full lighting model](./imgs/12/suzanne_full.png)
 
 ## One Last Thing
 
@@ -517,13 +517,13 @@ fn main() {
 
 Let's also go back and edit the shader to only show the specular highlight again. If you've done that, then you should see something like this when you run the program.
 
-![picture showing the difference in specular highlights on two cubes of different shininess](../doc_imgs/12/two_cubes.png)
+![picture showing the difference in specular highlights on two cubes of different shininess](./imgs/12/two_cubes.png)
 
 At first glance this looks fine, but there is an oddity here. The cube we assigned the highest shininess too is the one on the left yet the one on the right *seems* brighter. What's going on?
 
 This is an artifact from the fact that we've set the intensity to be the same. Think back to the picture of the gold and rubber objects at the beginning of the lesson. The shiny gold had small, intense highlights whereas the rubber had a dim but very wide highlight. If we return to using the full lighting model on the cubes, the seeming strangeness disappears and it becomes more obvious that the cube on the left his shinier than the one on the right.
 
-![picture of the same two cubes as above under the full lighting model](../doc_imgs/12/two_cubes_full.png)
+![picture of the same two cubes as above under the full lighting model](./imgs/12/two_cubes_full.png)
 
 ## What Next?
 

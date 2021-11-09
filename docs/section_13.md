@@ -36,7 +36,7 @@ let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::
 
 if you run the program at this point you should see the following image:
 
-![image showing a square colored orange through per-vertex color vectors](../doc_imgs/13/untextured.png)
+![image showing a square colored orange through per-vertex color vectors](./imgs/13/untextured.png)
 
 This is the blank canvas we will be painting with our texture image.
 
@@ -45,15 +45,15 @@ This is the blank canvas we will be painting with our texture image.
 
 We access texture images through vector values we call _UV values_ in a process called _UV mapping_. This lets us map pixels from the input pixels onto the rendered pixels on the screen. 
 
-![a picture of a blue and red gradiant with U and V axis labeled](../doc_imgs/13/uv.png)
+![a picture of a blue and red gradiant with U and V axis labeled](./imgs/13/uv.png)
 
 The UV coordinates follow the X,Y axis we're familiar with from elsewhere. Note that UV coordinates follow the same coordinate space as the rest of Vulkan with the origin point in the upper left corner with the positive U-axis moving further to the right and the positive V-axis moving further "down" the image. Another thing to note is that the axis goes from 0.0 to 1.0. Unlike values in model space only values between 0 and 1 are accepted.
 
 Here is an example of a triangle with the UV values for each vertex labeled.
 
-![a picture of the gradiant from the earlier picture with a triangle outlined inside](../doc_imgs/13/triangle1.png)
+![a picture of the gradiant from the earlier picture with a triangle outlined inside](./imgs/13/triangle1.png)
 
-![the same picture as above but with all colors outside the triangle removed](../doc_imgs/13/triangle2.png)
+![the same picture as above but with all colors outside the triangle removed](./imgs/13/triangle2.png)
 
 The second image shows what the triangle might look like if we ran it in our program. You can see that the portion of the image sketched out by the UV coordinates in the first image is the value loaded and put on the triangle.
 
@@ -61,7 +61,7 @@ The second image shows what the triangle might look like if we ran it in our pro
 
 We will be using the image below in our lesson. It's designed to be something that we can use to see whether it is oriented correctly. When working with UV mapping it can be easy to mess up the axis and end up with an image that's upside down or otherwise mapped incorrectly. The image below is labeled in such a way that any mistake in mapping will be plainly visible.
 
-![a picture of a diamond shape with the axis values in the UV-space labeled](../doc_imgs/13/diamond.png)
+![a picture of a diamond shape with the axis values in the UV-space labeled](./imgs/13/diamond.png)
 
 
 ## Implementing Textures
@@ -281,7 +281,7 @@ void main() {
 
 At this point we should be done with all the changes we need to make. Run the code and, if everything is successful, you should see the below image.
 
-![a picture of the square with our texture applied to it](../doc_imgs/13/textured.png)
+![a picture of the square with our texture applied to it](./imgs/13/textured.png)
 
 Looks good! Everything seems to be pointing in the right direction and colored correctly.
 
@@ -297,7 +297,7 @@ Textures are a huge topic and what we looked at here is just a taste. Textures a
 
 Normals are vital to lighting and we've been using them for a while but we've been using a very limited version of them. So far, we have one normal vector for each vertex which means each "triangle" that we render there's only a single normal vector. This is why you can clearly see each face in the model. We can make the lighting look more realistic by adding more vertices to the model. But this approach has limits as it means each model you render needs orders of magnitude more vertices than it would. Ideally, we would like to keep the vertex normals from the high-polygon version of our model and apply it to the lower-polygon version of the model and this is what bump mapping does. 
 
-![a picture of a brick wall next to a picture of the same wall in vertex normal mode](../doc_imgs/13/NormalMaps.png)
+![a picture of a brick wall next to a picture of the same wall in vertex normal mode](./imgs/13/NormalMaps.png)
 
 On the left we see a typical texture image like the one we implemented in this lesson. The image on the right is a *normal map* and is the most common form of bump mapping. If you remember back in lesson 7 we saw a cube with the colors supplied by the vertex normals. This is something similar. Each pixel of the normal map is a vertex stored as a color and it is this vertex that is used when applying lighting. With normal mapping we can apply directional lighting on a per-pixel basis rather than per-vertex.
 
@@ -307,7 +307,7 @@ We won't be implementing bump mapping as part of our tutorials but it's somethin
 
 Noise or [gradient noise](https://en.wikipedia.org/wiki/Gradient_noise) is a form of randomness that is often used in computer games. An example of this would be a terrain height-map. We generate a map, say, in the style of Minecraft. However, even "random" shapes generated on the CPU tend to look generic and repetitive thanks to the difficulties with generating true randomness on a computer. We can apply a "noise" function to generate a texture that we can use to modify things on the fly.
 
-![a picture of noise output by a perlin generator](../doc_imgs/13/noise.png)
+![a picture of noise output by a perlin generator](./imgs/13/noise.png)
 
 In our Minecraft-style example map we could use the above image to modify it. We could map each pixel of the noise texture to a point on the generated terrain and then move the surface of the map up or down based on the value we've found from the noise texture. Real terrain generators often use multiple noise textures, each one applying a different sort of transformation to the underlying map.
 

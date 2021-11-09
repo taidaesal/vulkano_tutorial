@@ -729,7 +729,7 @@ This is, in my opinion, one of the friction points in learning Rust that lingers
 
 #### Running the Code
 
-![a picture of a blank window showing what happens without rendering](../doc_imgs/11/blank_window.png)
+![a picture of a blank window showing what happens without rendering](./imgs/11/blank_window.png)
 
 This is what we expect to see without a rendering pipeline set up. The fact that we even see this much means that everything we just set up is working correctly and isn't causing any crashes.
 
@@ -944,7 +944,7 @@ Remember that `acquire_future` is an `Option` that might either have a `Swapchai
 
 Here `take()` comes to our rescue. A [method of the `Option` type](https://doc.rust-lang.org/std/option/enum.Option.html#method.take), `take()` "swaps out" the value being stored inside an `Option` with `None` and returns the initial value as a new variable, a process demonstrated by this technical presentation:
 
-![Indiana Jones swaps a gold idol for a rock demonstrating how we treat memory in this case](../doc_imgs/11/swap.png)
+![Indiana Jones swaps a gold idol for a rock demonstrating how we treat memory in this case](./imgs/11/swap.png)
 
 It might seem like we're "cheating" the compiler here because we're getting something that it initially doesn't want to give up. However, when we think about it we can intuit that we're actually working inside Rust's memory requirements just fine. The `acquire_future` variable still owns its own chunk of memory, it's just that that chunk now holds `None` and we have a *new* variable (in this case named `af`) which owns its own chunk of memory. Inside this second chunk of memory is the data that was initially inside the memory that `acquire_future` owned. So all our data is still owned by *someone* and the compiler can verify that, but we've moved the data we wanted into a new location.
 
@@ -1242,7 +1242,7 @@ The actual render system use itself is just as simple as we hoped for at the beg
 
 Running the code we have here gives us the following scene.
 
-![an image of a teapot illuminated by a single light source](../doc_imgs/11/teapot.png)
+![an image of a teapot illuminated by a single light source](./imgs/11/teapot.png)
 
 #### Adding More
 
@@ -1320,7 +1320,7 @@ fn main() {
 
 If we run this we see something a bit more visually interesting:
 
-![a picture showing a teapot torus and monkey illuminated by three light sources](../doc_imgs/11/three.png)
+![a picture showing a teapot torus and monkey illuminated by three light sources](./imgs/11/three.png)
 
 Play around a bit on your own. Before we'd have to manually code in a new model or light source but now we are free to experiment in ways we couldn't until now. This is a major step in your journey as a graphical developer. It's not up to Unreal Engine standards yet, but it's light-years away from the simple triangle we made in the second lesson.
 

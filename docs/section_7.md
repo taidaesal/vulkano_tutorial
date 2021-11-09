@@ -12,7 +12,7 @@ In principle it's fairly simple. Up until now we've been doing a single pass. Ou
 
 It might be best to use a diagram to explain the program flow we're going for.
 
-![diagram showing the flow of data through two render sub-passes](../doc_imgs/7/multi_pass_diagram.png)
+![diagram showing the flow of data through two render sub-passes](./imgs/7/multi_pass_diagram.png)
 
 The first part of the process is pretty much the same as in the last lesson: we gather up all the geometry, color, and MVP matrix data and feed it into a shader. The difference is where the data produced by our first set of shaders goes. In our last example, our shaders transformed the input into a format ready for display and saved it to an attachment which was immediately shown to the user. However, here, we output data that's only partly processed into temporary *intermediary buffers*. As far as I know, that's not a technical term but it's what I call them to help underscore the fact that they store data that is *in progress* and not a final result. The second pass is where we take the incomplete data stored in our `color` and `normal` attachments and turn it into data that can be presented to the user. In a sense it can be thought of as cutting our shaders from last time in half.
 
@@ -478,7 +478,7 @@ let lighting_set = Arc::new(PersistentDescriptorSet::start(lighting_layout.clone
 
 We're now ready to run our new multi-pass rendering system for the first time.
 
-![cube without dynamic lighting showing that our code is working](../doc_imgs/7/unlit_cube.png)
+![cube without dynamic lighting showing that our code is working](./imgs/7/unlit_cube.png)
 
 This is a major step backwards visually as it basically puts us back where we were at the start of the last lesson. But this is actually a pretty big step for us: it shows that our multi-pass rendering pipeline is actually working. If we had messed something up in how we set up the new rendering passes we wouldn't see anything at all.
 
@@ -487,7 +487,7 @@ Let's stop now to do something that we don't really need to, but looks cool. Ins
 f_color = vec4(subpassLoad(u_normals).rgb, 1.0);
 ```
 
-![a cube using the normal data in place of the color information](../doc_imgs/7/normal_cube.png)
+![a cube using the normal data in place of the color information](./imgs/7/normal_cube.png)
 
 Pretty neat, right? Normals aren't usually used as color input this way but this lets us visualize the data as more than just random numbers in a buffer.
 
@@ -556,7 +556,7 @@ This is *nearly* identical to the fragment shader we had at the end of the last 
 
 Let's run the code and see what we have.
 
-![a cube showing the same range of dynamic lighting as at the end of the last lesson](../doc_imgs/7/lit_cube.png)
+![a cube showing the same range of dynamic lighting as at the end of the last lesson](./imgs/7/lit_cube.png)
 
 And now we're back to where we were at this time in the last lesson. It's been a long journey to end up in the same place but don't get discouraged, we'll start showing what we can do in the next lesson.
 
@@ -564,7 +564,7 @@ And now we're back to where we were at this time in the last lesson. It's been a
 
 We've covered a lot of ground in this lesson so I want to provide one more diagram to review the core concept of what we did today.
 
-![diagram showing the intermediary products and the final product](../doc_imgs/7/review.png)
+![diagram showing the intermediary products and the final product](./imgs/7/review.png)
 
 On the left we have two *intermediary attachments*. There are named `color` and `normals` inside our Renderpass declaration. The shaders we ran on the first sub-pass output their data to these two attachments.
 
