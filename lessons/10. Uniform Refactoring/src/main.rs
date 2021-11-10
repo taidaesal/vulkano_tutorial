@@ -187,7 +187,7 @@ fn main() {
             color: {
                 load: Clear,
                 store: DontCare,
-                format: Format::A2B10G10R10UnormPack32,
+                format: Format::A2B10G10R10_UNORM_PACK32,
                 samples: 1,
             },
             normals: {
@@ -490,7 +490,7 @@ fn window_size_dependent_setup(
     };
     dynamic_state.viewports = Some(vec!(viewport));
 
-    let color_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::A2B10G10R10UnormPack32).unwrap();
+    let color_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::A2B10G10R10_UNORM_PACK32).unwrap();
     let normal_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::R16G16B16A16Sfloat).unwrap();
     let depth_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::D16Unorm).unwrap();
 

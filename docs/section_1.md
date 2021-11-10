@@ -518,4 +518,4 @@ let clear_values = vec!([0.0, 0.68, 1.0, 1.0].into());
 
 There, much better. Next time, we'll learn how to put something there.
 
-[lesson source code](../lessons/1.%20Initialization)
+[lesson source code](https://github.com/taidaesal/vulkano_tutorial/tree/gh-pages/lessons/1.%20Initialization)

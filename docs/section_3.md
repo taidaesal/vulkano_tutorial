@@ -141,7 +141,7 @@ Important note: `<vs::ty::MVP_Data>` is not just random gibberish. It **must** b
 In the section above we create a `BufferPool` but that means we need to request and fill a buffer from that pool each time we want to use it. The following code can be added right after we recreate the swapchain in our main program loop.
 
 ```rust
-let uniform_buffer_subbuffer = {
+let uniform_buffer_subbuffer = Arc::new({
     let mvp = MVP::new();
     let uniform_data = vs::ty::MVP_Data {
         model: mvp.model.into(),
@@ -150,7 +150,7 @@ let uniform_buffer_subbuffer = {
     };
 
     uniform_buffer.next(uniform_data).unwrap()
-};
+});
 ```
 
 Right now we aren't doing anything special with our actual MVP data. Instead, we're just passing the values directly into our `vs::ty::MVP_Data` object. We'll revisit this section in a little bit.
@@ -160,22 +160,28 @@ Right now we aren't doing anything special with our actual MVP data. Instead, we
 When we created our new shaders we had a section of code that looked like `set = 0, binding = 0`. This refers to a `DescriptorSet` and is what we'll declare next. Place the following code right after our `uniform_buffer_subbuffer` declaration.
 
 ```rust
-let layout = pipeline.descriptor_set_layout(0).unwrap();
-let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
-  .add_buffer(uniform_buffer_subbuffer).unwrap()
-  .build().unwrap()
-);
+let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+set_builder.add_buffer(uniform_buffer_subbuffer).unwrap();
+let set = Arc::new(set_builder.build().unwrap());
 ```
 
-For descriptor sets we need to know two things: the graphics pipeline the set is for and the index of the set. The first line here is how we find that information prior to creating our descriptor set. `pipeline` is, of course, the graphics pipeline we want to use and the `0` we pass to `.descriptor_set_layout()` is the set index we're requesting. This argument corresponds to the `set = 0` part of our uniform `layout` in the shader. We can have multiple sets and multiple buffers per set. `layout(set = 0, binding = 0)` means that Vulkan wants `MVP_Data` to be the first buffer of the first descriptor set.
+For descriptor sets we need to know two things: the graphics pipeline the set is for and the index of the set. The first line here is how we find that information prior to creating our descriptor set. `pipeline` is, of course, the graphics pipeline we want to use and the `0` in `.descriptor_set_layout().get(0)` is the set index we're requesting. This argument corresponds to the `set = 0` part of our uniform `layout` in the shader. We can have multiple sets and multiple buffers per set. `layout(set = 0, binding = 0)` means that Vulkan wants `MVP_Data` to be the first buffer of the first descriptor set.
 
 #### Update the draw command
 
-The last thing we need to do in order to pass our uniforms to the shader is add our set to the draw command. Go down to where we make the command buffer and update the `.draw()` method so it looks like this:
+The last thing we need to do in order to pass our uniforms to the shader is add our set to the command buffer so that our drawing command knows to use it. Go down to the `cmd_buffer_builder` and add the following below `.bind_pipeline_graphics()`
 
 ```rust
-.draw(pipeline.clone(), &dynamic_state, vertex_buffer.clone(), set.clone(), (), vec![]).unwrap()
+.bind_descriptor_sets(
+    PipelineBindPoint::Graphics,
+    pipeline.layout().clone(),
+    0,
+    set.clone(),
+)
 ```
+
+`PipelineBindPoint::Graphics` is used to tell Vulkan if we're attaching the value to a graphics pipeline or a compute pipeline. Unless you're using compute pipelines you can just always provide this value into `.bind_descriptor_sets`.
 
 #### What if we want more than one uniform buffer?
 
@@ -217,23 +223,22 @@ let second_uniform_buffer = CpuBufferPool::<vs::ty::extra_data_idk>::uniform_buf
 ```
 
 ```rust
-let second_uniform_subbuffer = {
+let second_uniform_subbuffer = Arc::new({
     let m:TMat4<f32> = identity();
     let uniform_data = vs::ty::extra_data_idk {
         extra_data: m.into(),
     };
 
     second_uniform_buffer.next(uniform_data).unwrap()
-};
+});
 ```
 
 ```rust
-let layout = pipeline.descriptor_set_layout(0).unwrap();
-let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
-    .add_buffer(uniform_buffer_subbuffer).unwrap()
-    .add_buffer(second_uniform_subbuffer).unwrap()
-    .build().unwrap()
-);
+let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+set_builder.add_buffer(uniform_buffer_subbuffer).unwrap();
+set_builder.add_buffer(second_uniform_subbuffer).unwrap();
+let set = Arc::new(set_builder.build().unwrap());
 ```
 
 Important Note: we call `.add_buffer()` in the order expected by our shader. We will not need to update our draw command since we are still only using a single set.
@@ -261,7 +266,7 @@ Doing this moves our triangle away from the viewer "deeper" into the screen. Thi
 Once you've done that, update the sub-buffer creation screen to look like this. Don't worry that it looks hacky, we'll clean it up in the end.
 
 ```rust
-let uniform_buffer_subbuffer = {
+let uniform_buffer_subbuffer = Arc::new({
     let mvp = MVP::new();
     let dimensions = if let Some(dimensions) = window.get_inner_size() {
         let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
@@ -277,7 +282,7 @@ let uniform_buffer_subbuffer = {
     };
 
     uniform_buffer.next(uniform_data).unwrap()
-};
+});
 ```
 
 This sets the aspect ratio to be the same as our screen as sets the viewable area to be anything from depth 0.01 to 100.0. Run it again and you should see a triangle that looks basically the same, but which will not become distorted when you resize the window.
@@ -289,7 +294,7 @@ This sets the aspect ratio to be the same as our screen as sets the viewable are
 We'll take advantage of a method called `look_at()` to set our view matrix. It takes three vectors, the first representing the location of the eye (our view port), the second representing the direction we're looking, and the their representing which direction is "up" for us. In practice this is pretty simple and you can see this by updating the sub-buffer code as follows.
 
 ```rust
-let uniform_buffer_subbuffer = {
+let uniform_buffer_subbuffer = Arc::new({
     let mvp = MVP::new();
     let dimensions = if let Some(dimensions) = window.get_inner_size() {
         let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
@@ -306,7 +311,7 @@ let uniform_buffer_subbuffer = {
     };
 
     uniform_buffer.next(uniform_data).unwrap()
-};
+});
 ```
 
 Run the code and you should see the following image.
@@ -336,7 +341,7 @@ Now that we understand what the coordinate directions in Vulkan look like, it's 
 The model matrix holds all the transformations we want to do to a particular model. Let's look at a model matrix that translates (moves) our triangle up and to the right.
 
 ```rust
-let uniform_buffer_subbuffer = {
+let uniform_buffer_subbuffer = Arc::new({
     let mvp = MVP::new();
     let dimensions = if let Some(dimensions) = window.get_inner_size() {
         let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
@@ -354,7 +359,7 @@ let uniform_buffer_subbuffer = {
     };
 
     uniform_buffer.next(uniform_data).unwrap()
-};
+});
 ```
 
 run the code and you should see something like this:
@@ -405,7 +410,7 @@ mvp.model = translate(&identity(), &vec3(0.0, 0.0, -0.5));
 Lastly, we can simplify our sub-buffer creation code to use our new global `mvp` variable.
 
 ```rust
-let uniform_buffer_subbuffer = {
+let uniform_buffer_subbuffer = Arc::new({
     let uniform_data = vs::ty::MVP_Data {
         model: mvp.model.into(),
         view: mvp.view.into(),
@@ -413,7 +418,7 @@ let uniform_buffer_subbuffer = {
     };
 
     uniform_buffer.next(uniform_data).unwrap()
-};
+});
 ```
 
 Run the code and you should see a triangle identical to the last one, just centered on the screen instead of moved up and to the right.
@@ -431,7 +436,7 @@ let rotation_start = Instant::now();
 now update our sub-buffer creation screen
 
 ```rust
-let uniform_buffer_subbuffer = {
+let uniform_buffer_subbuffer = Arc::new({
     let elapsed = rotation_start.elapsed().as_secs() as f64 + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
     let elapsed_as_radians = elapsed * pi::<f64>() / 180.0 * 30.0;
     let model = rotate_normalized_axis(&mvp.model, elapsed_as_radians as f32, &vec3(0.0, 0.0, 1.0));
@@ -443,9 +448,9 @@ let uniform_buffer_subbuffer = {
     };
 
     uniform_buffer.next(uniform_data).unwrap()
-};
+});
 ```
 
 It's not something that can really be captured in a still image but if you run this code you should see a rotating triangle.
 
-[lesson source code](../lessons/3.%20Transformations%20and%20Uniforms)
+[lesson source code](https://github.com/taidaesal/vulkano_tutorial/tree/gh-pages/lessons/3.%20Transformations%20and%20Uniforms)

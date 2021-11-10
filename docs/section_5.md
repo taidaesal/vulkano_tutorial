@@ -33,7 +33,7 @@ To tell Vulkan we want to enable face-culling we need to add some commands to ou
 
 ```rust
 let pipeline = Arc::new(GraphicsPipeline::start()
-    .vertex_input_single_buffer()
+    .vertex_input_single_buffer::<Vertex>()
     .vertex_shader(vs.main_entry_point(), ())
     .triangle_list()
     .viewports_dynamic_scissors_irrelevant(1)
@@ -56,4 +56,4 @@ Run the code and we should see the white triangle has disappeared, exactly as ex
 
 As with depth testing, we will be leaving this feature on for all future lessons.
 
-[lesson source code](../lessons/5.%20Face%20and%20Winding%20Order)
+[lesson source code](https://github.com/taidaesal/vulkano_tutorial/tree/gh-pages/lessons/5.%20Face%20and%20Winding%20Order)

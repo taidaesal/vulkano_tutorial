@@ -1,4 +1,4 @@
-// Copyright (c) 2020 taidaesal
+// Copyright (c) 2021 taidaesal
 // Licensed under the MIT license
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>
 //
@@ -6,27 +6,30 @@
 // from code provided by the Vulkano project under
 // the MIT license
 
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
-use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
-use vulkano::descriptor::pipeline_layout::PipelineLayoutAbstract;
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
+use vulkano::buffer::{CpuBufferPool, TypedBufferAccess};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
+use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
-use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
+use vulkano::image::view::ImageView;
 use vulkano::image::{AttachmentImage, SwapchainImage};
-use vulkano::instance::{Instance, PhysicalDevice};
-use vulkano::pipeline::GraphicsPipeline;
+use vulkano::instance::Instance;
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::swapchain::{AcquireError, ColorSpace, FullscreenExclusive, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
+use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
+use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain;
-use vulkano::sync::{GpuFuture, FlushError};
+use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync;
+use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::Version;
 
 use vulkano_win::VkSurfaceBuild;
 
-use winit::window::{WindowBuilder, Window};
-use winit::event_loop::{EventLoop, ControlFlow};
 use winit::event::{Event, WindowEvent};
+use winit::event_loop::{ControlFlow, EventLoop};
+use winit::window::{Window, WindowBuilder};
 
 use nalgebra_glm::{identity, look_at, perspective, pi, rotate_normalized_axis, TMat4, translate, vec3};
 
@@ -80,7 +83,7 @@ fn main() {
 
     let instance = {
         let extensions = vulkano_win::required_extensions();
-        Instance::new(None, &extensions, None).unwrap()
+        Instance::new(None, Version::V1_1, &extensions, None).unwrap()
     };
 
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
@@ -106,9 +109,15 @@ fn main() {
         let dimensions: [u32; 2] = surface.window().inner_size().into();
         mvp.projection = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.01, 100.0);
 
-        Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
-                       dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
-                       PresentMode::Fifo, FullscreenExclusive::Default, true, ColorSpace::SrgbNonLinear).unwrap()
+        Swapchain::start(device.clone(), surface.clone())
+            .num_images(caps.min_image_count)
+            .format(format)
+            .dimensions(dimensions)
+            .usage(usage)
+            .sharing_mode(&queue)
+            .composite_alpha(alpha)
+            .build()
+            .unwrap()
     };
 
     mod deferred_vert {
@@ -159,19 +168,19 @@ fn main() {
             color: {
                 load: Clear,
                 store: DontCare,
-                format: Format::A2B10G10R10UnormPack32,
+                format: Format::A2B10G10R10_UNORM_PACK32,
                 samples: 1,
             },
             normals: {
                 load: Clear,
                 store: DontCare,
-                format: Format::R16G16B16A16Sfloat,
+                format: Format::R16G16B16A16_SFLOAT,
                 samples: 1,
             },
             depth: {
                 load: Clear,
                 store: DontCare,
-                format: Format::D16Unorm,
+                format: Format::D16_UNORM,
                 samples: 1,
             }
         },
@@ -193,7 +202,7 @@ fn main() {
     let lighting_pass = Subpass::from(render_pass.clone(), 1).unwrap();
 
     let deferred_pipeline = Arc::new(GraphicsPipeline::start()
-        .vertex_input_single_buffer()
+        .vertex_input_single_buffer::<Vertex>()
         .vertex_shader(deferred_vert.main_entry_point(), ())
         .triangle_list()
         .viewports_dynamic_scissors_irrelevant(1)
@@ -267,9 +276,14 @@ fn main() {
         Vertex { position: [1.000000, -1.000000, -1.000000], normal: [1.0000, 0.0000, 0.0000], color: [1.0, 0.35, 0.137]},
     ].iter().cloned()).unwrap();
 
-    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None, compare_mask: None, write_mask: None, reference: None };
+    let mut viewport = Viewport {
+        origin: [0.0, 0.0],
+        dimensions: [0.0, 0.0],
+        depth_range: 0.0..1.0,
+    };
 
-    let (mut framebuffers, mut color_buffer, mut normal_buffer) = window_size_dependent_setup(device.clone(), &images, render_pass.clone(), &mut dynamic_state);
+    let mut framebuffers =
+        window_size_dependent_setup(device.clone(), &images, render_pass.clone(), &mut viewport);
 
     let mut recreate_swapchain = false;
 
@@ -290,10 +304,11 @@ fn main() {
 
                 if recreate_swapchain {
                     let dimensions: [u32; 2] = surface.window().inner_size().into();
-                    let (new_swapchain, new_images) = match swapchain.recreate_with_dimensions(dimensions) {
+                    let (new_swapchain, new_images) =
+                    match swapchain.recreate().dimensions(dimensions).build() {
                         Ok(r) => r,
                         Err(SwapchainCreationError::UnsupportedDimensions) => return,
-                        Err(e) => panic!("Failed to recreate swapchain: {:?}", e)
+                        Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
                     };
                     mvp.projection = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.01, 100.0);
 
@@ -412,6 +427,38 @@ fn main() {
 fn window_size_dependent_setup(
     device: Arc<Device>,
     images: &[Arc<SwapchainImage<Window>>],
+    render_pass: Arc<RenderPass>,
+    viewport: &mut Viewport,
+) -> (Vec<Arc<dyn FramebufferAbstract>>, Arc<AttachmentImage>, Arc<AttachmentImage>) {
+    let dimensions = images[0].dimensions();
+    viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
+
+    let color_buffer = ImageView::new(AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::A2B10G10R10_UNORM_PACK32).unwrap());
+    let normal_buffer = ImageView::new(AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::R16G16B16A16Sfloat).unwrap());
+
+    (images
+        .iter()
+        .map(|image| {
+            let view = ImageView::new(image.clone()).unwrap();
+            let depth_buffer = ImageView::new(
+                AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
+            )
+            .unwrap();
+            Arc::new(
+                Framebuffer::start(render_pass.clone())
+                    .add(view)
+                    .unwrap()
+                    .add(depth_buffer.clone())
+                    .unwrap()
+                    .build()
+                    .unwrap(),
+            ) as Arc<dyn FramebufferAbstract>
+        })
+        .collect::<Vec<_>>(), color_buffer.clone(), normal_buffer.clone())
+}
+/*fn window_size_dependent_setup(
+    device: Arc<Device>,
+    images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
     dynamic_state: &mut DynamicState
 ) -> (Vec<Arc<dyn FramebufferAbstract + Send + Sync>>, Arc<AttachmentImage>, Arc<AttachmentImage>) {
@@ -424,7 +471,7 @@ fn window_size_dependent_setup(
     };
     dynamic_state.viewports = Some(vec!(viewport));
 
-    let color_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::A2B10G10R10UnormPack32).unwrap();
+    let color_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::A2B10G10R10_UNORM_PACK32).unwrap();
     let normal_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::R16G16B16A16Sfloat).unwrap();
     let depth_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::D16Unorm).unwrap();
 
@@ -438,4 +485,4 @@ fn window_size_dependent_setup(
                 .build().unwrap()
         ) as Arc<dyn FramebufferAbstract + Send + Sync>
     }).collect::<Vec<_>>(), color_buffer.clone(), normal_buffer.clone())
-}
+}*/
