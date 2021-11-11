@@ -154,7 +154,7 @@ void main() {
             depth: {
                 load: Clear,
                 store: DontCare,
-                format: Format::D16Unorm,
+                format: Format::D16_UNORM,
                 samples: 1,
             }
         },
@@ -349,7 +349,7 @@ fn window_size_dependent_setup(
     };
     dynamic_state.viewports = Some(vec!(viewport));
 
-    let depth_buffer = AttachmentImage::transient(device.clone(), dimensions, Format::D16Unorm).unwrap();
+    let depth_buffer = AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap();
 
     images.iter().map(|image| {
         Arc::new(

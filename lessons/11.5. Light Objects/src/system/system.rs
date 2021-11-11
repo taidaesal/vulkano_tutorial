@@ -235,13 +235,13 @@ impl System {
                 normals: {
                     load: Clear,
                     store: DontCare,
-                    format: Format::R16G16B16A16Sfloat,
+                    format: Format::R16G16B16A16_SFLOAT,
                     samples: 1,
                 },
                 depth: {
                     load: Clear,
                     store: DontCare,
-                    format: Format::D16Unorm,
+                    format: Format::D16_UNORM,
                     samples: 1,
                 }
             },
@@ -782,8 +782,8 @@ impl System {
         dynamic_state.viewports = Some(vec!(viewport));
 
         let color_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::A2B10G10R10_UNORM_PACK32).unwrap();
-        let normal_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::R16G16B16A16Sfloat).unwrap();
-        let depth_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::D16Unorm).unwrap();
+        let normal_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::R16G16B16A16_SFLOAT).unwrap();
+        let depth_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::D16_UNORM).unwrap();
 
         (images.iter().map(|image| {
             Arc::new(

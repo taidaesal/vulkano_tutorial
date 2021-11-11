@@ -168,14 +168,14 @@ let ambient_buffer = CpuBufferPool::<ambient_frag::ty::Ambient_Data>::uniform_bu
 ```
 
 ```rust
-let ambient_uniform_subbuffer = {
+let ambient_uniform_subbuffer = Arc::new({
     let uniform_data = ambient_frag::ty::Ambient_Data {
         color: ambient_light.color.into(),
         intensity: ambient_light.intensity.into()
     };
 
     ambient_buffer.next(uniform_data).unwrap()
-};
+});
 ```
 
 #### Changes to our Pipeline
@@ -250,40 +250,85 @@ let directional_buffer = CpuBufferPool::<directional_frag::ty::Directional_Light
 #### Updated Descriptor Sets
 
 ```rust
-let deferred_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
-let deferred_set = Arc::new(PersistentDescriptorSet::start(deferred_layout.clone())
-    .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
-    .build().unwrap());
-let directional_layout = directional_pipeline.descriptor_set_layout(0).unwrap();
-let directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clone())
-    .add_image(color_buffer.clone()).unwrap()
-    .add_image(normal_buffer.clone()).unwrap()
-    .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
-    .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
-    .build().unwrap());
-let ambient_layout = ambient_pipeline.descriptor_set_layout(0).unwrap();
-let ambient_set = Arc::new(PersistentDescriptorSet::start(ambient_layout.clone())
-    .add_image(color_buffer.clone()).unwrap()
-    .add_image(normal_buffer.clone()).unwrap()
-    .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
-    .add_buffer(ambient_uniform_subbuffer.clone()).unwrap()
-    .build().unwrap());
+let deferred_layout = deferred_pipeline
+    .layout()
+    .descriptor_set_layouts()
+    .get(0)
+    .unwrap();
+let mut deferred_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
+deferred_set_builder
+    .add_buffer(uniform_buffer_subbuffer.clone())
+    .unwrap();
+let deferred_set = Arc::new(deferred_set_builder.build().unwrap());
+
+let ambient_layout = ambient_pipeline
+    .layout()
+    .descriptor_set_layouts()
+    .get(0)
+    .unwrap();
+let mut ambient_set_builder = PersistentDescriptorSet::start(ambient_layout.clone());
+ambient_set_builder.add_image(color_buffer.clone()).unwrap();
+ambient_set_builder
+    .add_image(normal_buffer.clone())
+    .unwrap();
+ambient_set_builder
+    .add_buffer(uniform_buffer_subbuffer.clone())
+    .unwrap();
+ambient_set_builder
+    .add_buffer(ambient_uniform_subbuffer)
+    .unwrap();
+let ambient_set = Arc::new(ambient_set_builder.build().unwrap());
 ```
 Our sets have been updated as well. We no longer need to provide the ambient sub-buffer to `directional_set`. Instead, we create a third descriptor set to store the inputs we need for our ambient shaders.
 
 #### Updated Render Call
 
 ```rust
-let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
-    .begin_render_pass(framebuffers[image_num].clone(), SubpassContents::Inline, clear_values)
+let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
+    device.clone(),
+    queue.family(),
+    CommandBufferUsage::OneTimeSubmit,
+)
+.unwrap();
+let command_buffer = command_buffer_builder
+    .begin_render_pass(
+        framebuffers[image_num].clone(),
+        SubpassContents::Inline,
+        clear_values,
+    )
     .unwrap()
-    .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), (), vec![])
+    .set_viewport(0, [viewport.clone()])
+    .bind_pipeline_graphics(deferred_pipeline.clone())
+    .bind_descriptor_sets(
+        PipelineBindPoint::Graphics,
+        deferred_pipeline.layout().clone(),
+        0,
+        deferred_set.clone(),
+    )
+    .bind_vertex_buffers(0, vertex_buffer.clone())
+    .draw(vertex_buffer.len() as u32, 1, 0, 0)
     .unwrap()
     .next_subpass(SubpassContents::Inline)
     .unwrap()
-    .draw(directional_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), directional_set.clone(), (), vec![])
+    .bind_pipeline_graphics(directional_pipeline.clone())
+    .bind_descriptor_sets(
+        PipelineBindPoint::Graphics,
+        directional_pipeline.layout().clone(),
+        0,
+        directional_set.clone(),
+    )
+    .bind_vertex_buffers(0, vertex_buffer.clone())
+    .draw(vertex_buffer.len() as u32, 1, 0, 0)
     .unwrap()
-    .draw(ambient_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), ambient_set.clone(), (), vec![])
+    .bind_pipeline_graphics(ambient_pipeline.clone())
+    .bind_descriptor_sets(
+        PipelineBindPoint::Graphics,
+        ambient_pipeline.layout().clone(),
+        0,
+        ambient_set.clone(),
+    )
+    .bind_vertex_buffers(0, vertex_buffer.clone())
+    .draw(vertex_buffer.len() as u32, 1, 0, 0)
     .unwrap()
     .end_render_pass()
     .unwrap()
@@ -310,13 +355,13 @@ We'll need to create directional uniform sub-buffers several times so let's crea
 fn generate_directional_buffer(
     pool: &vulkano::buffer::cpu_pool::CpuBufferPool<directional_frag::ty::Directional_Light_Data>,
     light: &DirectionalLight
-) -> vulkano::buffer::cpu_pool::CpuBufferPoolSubbuffer<directional_frag::ty::Directional_Light_Data, Arc<StdMemoryPool>> {
+) -> Arc<vulkano::buffer::cpu_pool::CpuBufferPoolSubbuffer<directional_frag::ty::Directional_Light_Data, Arc<StdMemoryPool>>> {
     let uniform_data = directional_frag::ty::Directional_Light_Data {
         position: light.position.into(),
         color: light.color.into()
     };
 
-    pool.next(uniform_data).unwrap()
+    Arc::new(pool.next(uniform_data).unwrap())
 }
 ```
 
@@ -338,11 +383,29 @@ Now we need to change our rendering system to call our directional shader three 
 
 First we change our command buffer declaration.
 ```rust
-let mut commands = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
+let mut commands = AutoCommandBufferBuilder::primary(
+    device.clone(),
+    queue.family(),
+    CommandBufferUsage::OneTimeSubmit,
+)
+.unwrap();
 commands
-    .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
+    .begin_render_pass(
+        framebuffers[image_num].clone(),
+        SubpassContents::Inline,
+        clear_values,
+    )
     .unwrap()
-    .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), (), vec![])
+    .set_viewport(0, [viewport.clone()])
+    .bind_pipeline_graphics(deferred_pipeline.clone())
+    .bind_descriptor_sets(
+        PipelineBindPoint::Graphics,
+        deferred_pipeline.layout().clone(),
+        0,
+        deferred_set.clone(),
+    )
+    .bind_vertex_buffers(0, vertex_buffer.clone())
+    .draw(vertex_buffer.len() as u32, 1, 0, 0)
     .unwrap()
     .next_subpass(SubpassContents::Inline)
     .unwrap();
@@ -352,56 +415,127 @@ The type of `commands` is `AutoCommandBufferBuilder` so we can keep chaining ren
 
 Next, we declare our directional data sub-buffer for our first directional input.
 ```rust
-let mut directional_uniform_subbuffer = generate_directional_buffer(&directional_buffer, &directional_light_r);
-let directional_layout = directional_pipeline.descriptor_set_layout(0).unwrap();
-let mut directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clone())
-    .add_image(color_buffer.clone()).unwrap()
-    .add_image(normal_buffer.clone()).unwrap()
-    .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
-    .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
-    .build().unwrap());
+let mut directional_uniform_subbuffer =
+    generate_directional_buffer(&directional_buffer, &directional_light_r);
+    
+let directional_layout = directional_pipeline
+    .layout()
+    .descriptor_set_layouts()
+    .get(0)
+    .unwrap();
+let mut directional_set_builder =
+    PersistentDescriptorSet::start(directional_layout.clone());
+directional_set_builder
+    .add_image(color_buffer.clone())
+    .unwrap();
+directional_set_builder
+    .add_image(normal_buffer.clone())
+    .unwrap();
+directional_set_builder
+    .add_buffer(uniform_buffer_subbuffer.clone())
+    .unwrap();
+directional_set_builder
+    .add_buffer(directional_uniform_subbuffer.clone())
+    .unwrap();
+let mut directional_set = Arc::new(directional_set_builder.build().unwrap());
 ```
 We use our helper function for the first time here to declare our usual `directional_uniform_subbuffer` variable. However, note that both `directional_uniform_subbuffer` and `directional_set` are mutable.
 
 Next we append the rendering commands to our command buffer building.
 ```rust
 commands
-    .draw(directional_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), directional_set.clone(), (), vec![])
+    .bind_pipeline_graphics(directional_pipeline.clone())
+    .bind_descriptor_sets(
+        PipelineBindPoint::Graphics,
+        directional_pipeline.layout().clone(),
+        0,
+        directional_set.clone(),
+    )
+    .bind_vertex_buffers(0, vertex_buffer.clone())
+    .draw(vertex_buffer.len() as u32, 1, 0, 0)
     .unwrap();
 ```
 
 That will do for the first directional light and now we can just do the same thing for the other two lights.
 ```rust
-directional_uniform_subbuffer = generate_directional_buffer(&directional_buffer, &directional_light_g);
-directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clone())
-    .add_image(color_buffer.clone()).unwrap()
-    .add_image(normal_buffer.clone()).unwrap()
-    .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
-    .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
-    .build().unwrap());
+directional_uniform_subbuffer =
+    generate_directional_buffer(&directional_buffer, &directional_light_g);
+
+let mut directional_set_builder =
+    PersistentDescriptorSet::start(directional_layout.clone());
+directional_set_builder
+    .add_image(color_buffer.clone())
+    .unwrap();
+directional_set_builder
+    .add_image(normal_buffer.clone())
+    .unwrap();
+directional_set_builder
+    .add_buffer(uniform_buffer_subbuffer.clone())
+    .unwrap();
+directional_set_builder
+    .add_buffer(directional_uniform_subbuffer.clone())
+    .unwrap();
+directional_set = Arc::new(directional_set_builder.build().unwrap());
+
 commands
-    .draw(directional_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), directional_set.clone(), (), vec![])
+    .bind_pipeline_graphics(directional_pipeline.clone())
+    .bind_descriptor_sets(
+        PipelineBindPoint::Graphics,
+        directional_pipeline.layout().clone(),
+        0,
+        directional_set.clone(),
+    )
+    .bind_vertex_buffers(0, vertex_buffer.clone())
+    .draw(vertex_buffer.len() as u32, 1, 0, 0)
     .unwrap();
 
-directional_uniform_subbuffer = generate_directional_buffer(&directional_buffer, &directional_light_b);
-directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clone())
-    .add_image(color_buffer.clone()).unwrap()
-    .add_image(normal_buffer.clone()).unwrap()
-    .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
-    .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
-    .build().unwrap());
+directional_uniform_subbuffer =
+    generate_directional_buffer(&directional_buffer, &directional_light_b);
+let mut directional_set_builder =
+    PersistentDescriptorSet::start(directional_layout.clone());
+directional_set_builder
+    .add_image(color_buffer.clone())
+    .unwrap();
+directional_set_builder
+    .add_image(normal_buffer.clone())
+    .unwrap();
+directional_set_builder
+    .add_buffer(uniform_buffer_subbuffer.clone())
+    .unwrap();
+directional_set_builder
+    .add_buffer(directional_uniform_subbuffer.clone())
+    .unwrap();
+directional_set = Arc::new(directional_set_builder.build().unwrap());
+
 commands
-    .draw(directional_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), directional_set.clone(), (), vec![])
+    .bind_pipeline_graphics(directional_pipeline.clone())
+    .bind_descriptor_sets(
+        PipelineBindPoint::Graphics,
+        directional_pipeline.layout().clone(),
+        0,
+        directional_set.clone(),
+    )
+    .bind_vertex_buffers(0, vertex_buffer.clone())
+    .draw(vertex_buffer.len() as u32, 1, 0, 0)
     .unwrap();
 ```
 
 Lastly, let's draw our ambient buffer and finish our command buffer.
 ```rust
 commands
-    .draw(ambient_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), ambient_set.clone(), (), vec![])
+    .bind_pipeline_graphics(ambient_pipeline.clone())
+    .bind_descriptor_sets(
+        PipelineBindPoint::Graphics,
+        ambient_pipeline.layout().clone(),
+        0,
+        ambient_set.clone(),
+    )
+    .bind_vertex_buffers(0, vertex_buffer.clone())
+    .draw(vertex_buffer.len() as u32, 1, 0, 0)
     .unwrap()
     .end_render_pass()
     .unwrap();
+
 let command_buffer = commands.build().unwrap();
 ```
 
@@ -413,4 +547,4 @@ That should be the last thing we need to do. Let's compile and run the code and 
 
 Excellent, it looks just like it should. It's been two long lessons, but we've finally seen how to do something we couldn't have done back in lesson 6. You can also see the emerging outline of the general rendering engine that we'll be working on in a few lessons. This process of building up the final scene by running sets of shaders over and over again will be the core of any engine.
 
-[lesson source code](../lessons/8.%20Light%20II)
+[lesson source code](https://github.com/taidaesal/vulkano_tutorial/tree/gh-pages/lessons/8.%20Light%20II)
