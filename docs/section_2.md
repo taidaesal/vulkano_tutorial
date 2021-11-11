@@ -152,7 +152,7 @@ Go down to where we declared our `command_buffer` variable. In between the lines
 .unwrap()
 ```
 
-The methods before the `draw` command are fairly self-explanitory. We tell Vulkan what graphics pipeline, vertex buffers, and viewport we want to use for any draw operation to follow.
+The methods before the `draw` command are fairly self-explanatory. We tell Vulkan what graphics pipeline, vertex buffers, and viewport we want to use for any draw operation to follow.
 
 The `draw` command takes in a count of how many things we're rendering as well as what index to start from in the given buffer. We already specified the details of *how* to draw to the screen when we created our pipeline, so here we can just tell Vulkan to go ahead and use it.
 

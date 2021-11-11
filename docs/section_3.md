@@ -134,7 +134,7 @@ A buffer pool is, in effect, a ring buffer containing "sub buffers" that we can 
 
 The `uniform_buffer()` is a helper method that produces a `CpuBufferPool` configured specifically for holding uniform data. We could just as easily write `CpuBufferPool::<vs::ty::MVP_Data>::new(device.clone(), BufferUsage::all());` to get a generic `CpuBufferPool` suitable for most applications.
 
-Important note: `<vs::ty::MVP_Data>` is not just random gibberish. It **must** be the same name as the struct or variable holding the uniform data in the shader. This might be obvious to you, but it caused me a lot of frustration before I realized what was going on and it's not very well documented elsewhere. So just keep it in mind. That's why I named the struct something distinctive like `MVP_Data` instead of just the generic `Data` that it's named in the examples in the main Vulkano github repository.
+Important note: `<vs::ty::MVP_Data>` is not just random gibberish. It **must** be the same name as the struct or variable holding the uniform data in the shader. This might be obvious to you, but it caused me a lot of frustration before I realized what was going on and it's not very well documented elsewhere. So just keep it in mind. That's why I named the struct something distinctive like `MVP_Data` instead of just the generic `Data` that it's named in the examples in the main Vulkano GitHub repository.
 
 #### Using our sub-buffer
 

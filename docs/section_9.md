@@ -32,7 +32,7 @@ A face which has textures but no normals would be
 f 3/6 1/1 5/7
 ```
 
-This is only a small sub-set of the total functionality offered by the obj file format. For a more complete understanding, the [wikipedia page](https://en.wikipedia.org/wiki/Wavefront_.obj_file) is a good place to start.
+This is only a small sub-set of the total functionality offered by the obj file format. For a more complete understanding, the [Wikipedia page](https://en.wikipedia.org/wiki/Wavefront_.obj_file) is a good place to start.
 
 #### Blender Exporter
 
@@ -135,7 +135,7 @@ mod ambient_vert {
 
 Why do we get to store our shaders in the local project directory while our models live in a "global" place? 
 
-The main reason for this is that what files Rust can find depends on *where it's being run from*. Macros like `shader!` aren't "run" in the traditional sense, but they are exanded and resolved at compile time. From the perspective of the Rust compiler working on resolving this macro, the "working directory" is the one the source file is located in. Meanwhile, our models are loaded at *runtime* which means their working directory is whatever directory `cargo` is being run from. Since these tutorials are intended to be run from within the base `vulkano_tutorial` folder, that means all file paths have to be expressed relative to that.
+The main reason for this is that what files Rust can find depends on *where it's being run from*. Macros like `shader!` aren't "run" in the traditional sense, but they are expanded and resolved at compile time. From the perspective of the Rust compiler working on resolving this macro, the "working directory" is the one the source file is located in. Meanwhile, our models are loaded at *runtime* which means their working directory is whatever directory `cargo` is being run from. Since these tutorials are intended to be run from within the base `vulkano_tutorial` folder, that means all file paths have to be expressed relative to that.
 
 ## A More Complicated Example
 
@@ -150,7 +150,7 @@ let mut cube = Model::new("./src/models/suzanne.obj").build();
 cube.translate(vec3(0.0, 0.0, -1.5));
 ```
 
-![a picture of suzanne showing apparent transparency](./imgs/9/suzanne_1.png)
+![a picture of Suzanne showing apparent transparency](./imgs/9/suzanne_1.png)
 
 Well that's kind of horrifying. What's gone wrong?
 
