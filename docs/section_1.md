@@ -7,27 +7,27 @@ The first thing we'll do is creating our `Cargo.toml` file. The dependencies lis
 ```toml
 [package]
 name = "example_project"
-version = "0.21.0"
-authors = ["yourname"]
-edition = "2018"
+version = "0.26.0"
+authors = ["your_name"]
+edition = "2021"
 
 [dependencies]
-vulkano = "0.21.0"
-winit = "0.24.0"
-vulkano-win = "0.21.0"
-vulkano-shaders = "0.21.0"
+vulkano = "0.26.0"
+winit = "0.25.0"
+vulkano-win = "0.26.0"
+vulkano-shaders = "0.26.0"
 ```
 
 Let's go over the dependencies one by one.
 ```toml
-vulkano = "0.21.0"
+vulkano = "0.26.0"
 ```
 This is the main library ("crate" in Rust-speak) that we'll be using. This crate wraps the Vulkan API with its own Rust API so that we can call it from our application. We could use the Vulkan API directly if we really wanted to but that would be far more difficult than necessary as well as producing ugly code that doesn't follow Rust idioms. This is because the main Vulkan API is in C and can only be interacted with using Rust's Foreign Function Interface (FFI) mechanism. Although Rust is designed to interface with C when necessary, why would we do that when we have a lovely crate to wrap it all up in a nice Rusty bow for us?
 
 There is a small trade-off here because if you want to go from using Vulkano to using Vulkan directly there will be a learning curve as you get to grips with the native C API. However, learning Vulkano will teach you all the core concepts of Vulkan so it likely won't be that much work to make the change later.
 
 ```toml
-winit = "0.24.0"
+winit = "0.25.0"
 ```
 
 This crate solves a problem that surprises a lot of people learning about graphics programming for the first time: our main graphics API (Vulkan in this case) doesn't actually provide a way to show anything on the screen! On first glance this seems a bit crazy. After all, isn't the whole *point* of something like Vulkan or OpenGL to show something on the screen? Well, yes and no.
@@ -35,13 +35,13 @@ This crate solves a problem that surprises a lot of people learning about graphi
 The key thing to keep in mind is that Vulkan is how we use our *hardware* (usually a graphics card, sometimes integrated rendering hardware) to turn data into graphical output. However, the actual user interface (UI) is a bit of *software* that's provided by the host operating system. Vulkan, like OpenGL before it, is explicitly operating system agnostic which is just a fancy way of saying that it will never contain code that will only work on Windows or Linux or any other single platform. To interact with the operating system itself and do things like open windows or get user input we need to use a second crate.
 
 ```toml
-vulkano-win = "0.21.0"
+vulkano-win = "0.26.0"
 ```
 
 This is the other part of our "how do we get Vulkan to talk to our UI" problem. The `winit` crate lets us open a window for whatever operating system we're using but there still needs to be a connection between our new window and our graphics API. This crate is a small bit of code that lets us go "hey, you can put your graphics in this window." It would be possible to roll this functionality into the same crate as the window-handling code and this is the strategy used by a number of other libraries you might find out there; however, the `winit` maintainers have kept a tight focus on their project scope.
 
 ```toml
-vulkano-shaders = "0.21.0"
+vulkano-shaders = "0.26.0"
 ```
 
 I'm kind of cheating by listing this dependency in this section since we won't be using it for this lesson, but we will be using it in every other one so we might as well talk about it now.
@@ -58,22 +58,25 @@ Vulkan is a powerful API but that power comes with a trade-off in the form of a 
 The first section is straight-forward enough as it's just the list of dependencies. You should recognize the root crates from our discussion of our `Cargo.toml` file. The actual data types and functions being imported will be introduced later as they're used. Everything after this block will be inside our `main` method.
 
 ```rust
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
+use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions};
-use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract};
+use vulkano::image::view::ImageView;
 use vulkano::image::SwapchainImage;
-use vulkano::instance::{Instance, PhysicalDevice};
+use vulkano::instance::Instance;
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
+use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass};
 use vulkano::swapchain;
-use vulkano::sync::{GpuFuture, FlushError};
+use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync;
+use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::Version;
 
 use vulkano_win::VkSurfaceBuild;
 
-use winit::window::{WindowBuilder, Window};
-use winit::event_loop::{EventLoop, ControlFlow};
 use winit::event::{Event, WindowEvent};
+use winit::event_loop::{ControlFlow, EventLoop};
+use winit::window::{Window, WindowBuilder};
 
 use std::sync::Arc;
 ```
@@ -85,11 +88,11 @@ The first block of actual Vulkano code we're going to write is where we declare 
 ```rust
 let instance = {
     let extensions = vulkano_win::required_extensions();
-    Instance::new(None, &extensions, None).unwrap()
+    Instance::new(None, Version::V1_1, &extensions, None).unwrap()
 };
 ```
 
-The only thing to note is the second line, `let extensions = ...`. The Vulkan specification separates core features from those which are considered optional. Rendering to a screen is one of these optional features and we need to specifically request that our created `Instance` contains it. We can get all necessary optional features by asking `vulkano_win` what it requires.
+Two things to note. On the second line, `let extensions = ...`. The Vulkan specification separates core features from those which are considered optional. Rendering to a screen is one of these optional features and we need to specifically request that our created `Instance` contains it. We can get all necessary optional features by asking `vulkano_win` what it requires. A second thing to note is `Version::V1_1`. This is how we declare the *minimum* version of Vulkan we want. We can use Vulkan functions from higher versions but if the software or hardware doesn't meet this minimum requirement the program will refuse to run.
 
 If it seems strange that actually showing an image is considered "optional" by our graphics API remember the discussion earlier about how showing anything on the UI is considered outside the scope of the main Vulkan specification. In addition, the Vulkan API lets you use your graphics hardware for many things, not all of which require the ability to display it somewhere. We won't be getting into the full range of possibility in these tutorials, but it's a good demonstration of Vulkan's approach of leaving it to the programmer to specify anything that might have more than one option.
 
@@ -179,9 +182,15 @@ let (mut swapchain, images) = {
     let format = caps.supported_formats[0].0;
     let dimensions: [u32; 2] = surface.window().inner_size().into();
 
-    Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
-                   dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
-                   PresentMode::Fifo, FullscreenExclusive::Default, true, ColorSpace::SrgbNonLinear).unwrap()
+    Swapchain::start(device.clone(), surface.clone())
+        .num_images(caps.min_image_count)
+        .format(format)
+        .dimensions(dimensions)
+        .usage(usage)
+        .sharing_mode(&queue)
+        .composite_alpha(alpha)
+        .build()
+        .unwrap()
 };
 ```
 
@@ -193,7 +202,7 @@ let (mut swapchain, images) = {
 
 `dimensions` is just the size of our window. There are actually a number of complications with how drivers decide what counts as a "sensible" image size. Using Vulkano we can mostly ignore that and just ask our `winit` window what size it requires.
 
-There are too many arguments being passed to `Swapchain::new` to be worth covering here, particularly since we'll be using the code listed above throughout the rest of our tutorial. It's safe to leave it alone until you decide to explore the more complete range of options `Swapchain` gives us. At this point, the main thing to note is the last argument. This is an `Option` argument which lets us pass in an existing `Swapchain`, if any. This will be necessary later on in our example but, for obvious reasons, right now we have no existing `Swapchain` to give it.
+There are too many arguments being passed to `Swapchain::start` to be worth covering here, particularly since we'll be using the code listed above throughout the rest of our tutorial. It's safe to leave it alone until you decide to explore the more complete range of options `Swapchain` gives us.
 
 #### Shaders
 
@@ -239,10 +248,14 @@ A `GraphicsPipeline` is the second half of the process we started with our `Rend
 
 However, since we're not rendering anything in this tutorial we'll come back to this in the next lesson. So don't worry right now if you don't understand exactly what the `RenderPass` and `GraphicsPipeline` are supposed to be doing, just remember that this is the point in the process where we need to set it up.
 
-One thing that we do need to declare now is a `DynamicState` struct. This is used to let us change the size of the viewport (for example, on window-resize) without needing to recreate the entire `GraphicsPipeline`.
+One thing that we do need to declare now is a `viewport` struct. This is used to let us change the size of the viewport (for example, on window-resize) without needing to recreate the entire `GraphicsPipeline`.
 
 ```rust
-let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None, compare_mask: None, write_mask: None, reference: None };
+let mut viewport = Viewport {
+    origin: [0.0, 0.0],
+    dimensions: [0.0, 0.0],
+    depth_range: 0.0..1.0,
+};
 ```
 
 #### Framebuffers
@@ -250,7 +263,7 @@ let mut dynamic_state = DynamicState { line_width: None, viewports: None, scisso
 When we declared our `Renderpass` object earlier we also declared a single "framebuffer attachment" to go along with it. However, this just tells Vulkan what the framebuffer *will* look like. Before we can render anything, we need to create the actual `Framebuffer` to go along with it.
 
 ```rust
-let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
+let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 ```
 
 The `window_size_dependent_setup` helper function will be listed shortly, but right now take a look at the arguments. The first argument is for `Image`s which, remember, are just Vulkan-speak for data buffers. The second argument is where we give it our render pass for it to be attached to, which is where we connect the actual `Framebuffer`s to their declaration in the `Renderpass`, and the last argument is a `DynamicState` struct which we pass to let us avoid having to recreate everything if the window changes size.
@@ -258,26 +271,27 @@ The `window_size_dependent_setup` helper function will be listed shortly, but ri
 ```rust
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
-    dynamic_state: &mut DynamicState
-) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
+    render_pass: Arc<RenderPass>,
+    viewport: &mut Viewport,
+) -> Vec<Arc<dyn FramebufferAbstract>> {
     let dimensions = images[0].dimensions();
+    viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
-    let viewport = Viewport {
-        origin: [0.0, 0.0],
-        dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-        depth_range: 0.0 .. 1.0,
-    };
-    dynamic_state.viewports = Some(vec!(viewport));
-
-    images.iter().map(|image| {
-        Arc::new(
-            Framebuffer::start(render_pass.clone())
-                .add(image.clone()).unwrap()
-                .build().unwrap()
-        ) as Arc<dyn FramebufferAbstract + Send + Sync>
-    }).collect::<Vec<_>>()
+    images
+        .iter()
+        .map(|image| {
+            let view = ImageView::new(image.clone()).unwrap();
+            Arc::new(
+                Framebuffer::start(render_pass.clone())
+                    .add(view)
+                    .unwrap()
+                    .build()
+                    .unwrap(),
+            ) as Arc<dyn FramebufferAbstract>
+        })
+        .collect::<Vec<_>>()
 }
+
 ```
 This helper function is stolen wholesale from the Vulkano examples page and won't be explored here. For our purposes we can just accept it without changes.
 
@@ -342,7 +356,7 @@ event_loop.run(move |event, _, control_flow| {
   });
 ```
 
-If you're new to Rust you might be a bit confused by the last item `() => {}`. Rust `match` statements must be *comprehensive*, which just means that they need to account for all possible values. There are, as you could probably guess, way more than 3 possible events so we use a special bit of Rust syntax to say, basically, "if we have anything else that dosen't fit above, do nothing." Rust forces us to be explicit about this as a way of catching errors where programmers update an enum but forget to update where it's used.
+If you're new to Rust you might be a bit confused by the last item `() => {}`. Rust `match` statements must be *comprehensive*, which just means that they need to account for all possible values. There are, as you could probably guess, way more than 3 possible events so we use a special bit of Rust syntax to say, basically, "if we have anything else that doesn't fit above, do nothing." Rust forces us to be explicit about this as a way of catching errors where programmers update an enum but forget to update where it's used.
 
 This `match` block will be unchanged throughout these tutorials, so for the most part it won't be called out specifically after this point. When we talk about the "program loop" in later tutorials we mean the code that goes where the comment `// do our render operations here` currently lives.
 
@@ -365,21 +379,26 @@ We mentioned at the start of this section that the swapchain can become invalid 
 ```rust
 if recreate_swapchain {
     let dimensions: [u32; 2] = surface.window().inner_size().into();
-    let (new_swapchain, new_images) = match swapchain.recreate_with_dimensions(dimensions) {
-        Ok(r) => r,
-        Err(SwapchainCreationError::UnsupportedDimensions) => return,
-        Err(e) => panic!("Failed to recreate swapchain: {:?}", e)
-    };
+    let (new_swapchain, new_images) =
+        match swapchain.recreate().dimensions(dimensions).build() {
+            Ok(r) => r,
+            Err(SwapchainCreationError::UnsupportedDimensions) => return,
+            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+        };
 
     swapchain = new_swapchain;
-    framebuffers = window_size_dependent_setup(&new_images, render_pass.clone(), &mut dynamic_state);
+    framebuffers = window_size_dependent_setup(
+        &new_images,
+        render_pass.clone(),
+        &mut viewport,
+    );
     recreate_swapchain = false;
 }
 ```
 
 The first step is to retrieve the current size of the window, which we can do using the same code we used when creating the swapchain in the first place.
 
-The next block is the most interesting part. As you can see, Vulkano supplies a very useful helper method, `recreate_with_dimension`, that lets us produce a new swapchain using all the options and capabilities of an old one. This saves us quite a bit of code compared to where we initially created our swapchain. The return values are, just like when we initially created our swapchain, a `Swapchain` object and a `Vec` of `Image`s. We'll replace the old values with these new values in just a moment. The last thing to take note of is the error handling. We accept the `SwapchainCreationError::UnsupportedDimensions` error and continue as this is usually a spurious error generated when the user is currently resizing the window. We can just repeat the loop until swapchain creation succeeds in this case.
+The next block is the most interesting part. As you can see, Vulkano supplies a very useful helper method, `recreate().dimensions()`, that lets us produce a new swapchain using all the options and capabilities of an old one. This saves us quite a bit of code compared to where we initially created our swapchain. The return values are, just like when we initially created our swapchain, a `Swapchain` object and a `Vec` of `Image`s. We'll replace the old values with these new values in just a moment. The last thing to take note of is the error handling. We accept the `SwapchainCreationError::UnsupportedDimensions` error and continue as this is usually a spurious error generated when the user is currently resizing the window. We can just repeat the loop until swapchain creation succeeds in this case.
 
 The last thing to take note of is that we also need to recreate our framebuffers. This is because our framebuffers depends on the `Image`s stored in the swapchain. If one changes the other must follow. There aren't any hidden complications here and we can just use our `window_size_dependent_setup` helper function as before.
 
@@ -425,7 +444,7 @@ Recent changes to the Vulkano library have separated this process into two steps
 2: Finalize the commands and create the final `CommandBuffer`
 
 ```rust
-let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
+let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary(device.clone(), queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
 cmd_buffer_builder
     .begin_render_pass(framebuffers[image_num].clone(), SubpassContents::Inline, clear_values)
     .unwrap()
@@ -499,4 +518,4 @@ let clear_values = vec!([0.0, 0.68, 1.0, 1.0].into());
 
 There, much better. Next time, we'll learn how to put something there.
 
-[lesson source code](../lessons/1.%20Initialization)
+[lesson source code](https://github.com/taidaesal/vulkano_tutorial/tree/gh-pages/lessons/1.%20Initialization)

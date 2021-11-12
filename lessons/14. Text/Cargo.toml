@@ -1,13 +1,13 @@
 [package]
-name = "text_lesson"
-version = "0.21.0"
+name = "lesson_14"
+version = "0.26.0"
 authors = ["taidaesal"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-png = "0.16.8"
-vulkano = "0.21.0"
-winit = "0.24.0"
-vulkano-win = "0.21.0"
-vulkano-shaders = "0.21.0"
-nalgebra-glm = "0.11.0"
+png = "0.17.2"
+vulkano = "0.26.0"
+winit = "0.25.0"
+vulkano-win = "0.26.0"
+vulkano-shaders = "0.26.0"
+nalgebra-glm = "0.15.0"

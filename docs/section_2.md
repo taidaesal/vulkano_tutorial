@@ -93,20 +93,22 @@ Also note in the fragment shader that `f_color = ...` is not an inbuilt function
 Along with the shader declaration, this is the other major item we skipped talking about in the last lesson. The reason for this is that the two go together. Our `GraphicsPipeline` object describes *what* gets used, *when* it gets used, and what should happen after. The best explanation might just be to show what it looks like. Remember that this goes after our `RenderPass` object is created.
 
 ```rust
-let pipeline = Arc::new(GraphicsPipeline::start()
-    .vertex_input_single_buffer()
-    .vertex_shader(vs.main_entry_point(), ())
-    .triangle_list()
-    .viewports_dynamic_scissors_irrelevant(1)
-    .fragment_shader(fs.main_entry_point(), ())
-    .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-    .build(device.clone())
-    .unwrap());
+let pipeline = Arc::new(
+    GraphicsPipeline::start()
+        .vertex_input_single_buffer::<Vertex>()
+        .vertex_shader(vs.main_entry_point(), ())
+        .triangle_list()
+        .viewports_dynamic_scissors_irrelevant(1)
+        .fragment_shader(fs.main_entry_point(), ())
+        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        .build(device.clone())
+        .unwrap(),
+);
 ```
 
 In understanding how to read this, keep in mind that each function call gets called in order. Reading it line by line lets us see how data will flow through our shaders to produce output.
 
-`.vertex_input_single_buffer()` tells Vulkan to expect the shader to take exactly one buffer (explained in a bit) as input.
+`.vertex_input_single_buffer::<Vertex>()` tells Vulkan to expect the shader to take exactly one buffer (explained in a bit) as input. The `::<Vertex>` part of this line is part of Rust's system of [generics](https://doc.rust-lang.org/book/ch10-01-syntax.html). Here we're telling it to expect data of the `Vertex` type.
 
 `.vertex_shader(vs.main_entry_point(), ())` tells Vulkan what to use as the vertex shader, as well as the main entry-point to use.
 
@@ -140,13 +142,19 @@ Buffer management is a complex topic and more advanced buffer usage will be cove
 
 And that's it, as far as basic data passing goes. We're done with our setup and ready to call the drawing code to show something to the screen.
 
-Go down to where we declared our `command_buffer` variable. In between the lines `.begin_render_pass` and `.end_render_pass` add the following line of code.
+Go down to where we declared our `command_buffer` variable. In between the lines `.begin_render_pass` and `.end_render_pass` add the following lines of code.
 
 ```rust
-.draw(pipeline.clone(), &dynamic_state, vertex_buffer.clone(), (), (), vec![]).unwrap()
+.set_viewport(0, [viewport.clone()])
+.bind_pipeline_graphics(pipeline.clone())
+.bind_vertex_buffers(0, vertex_buffer.clone())
+.draw(vertex_buffer.len() as u32, 1, 0, 0)
+.unwrap()
 ```
 
-And that's it. The `draw` command takes in the pipeline we want to use for rendering and the data to render and that's enough for us. We already specified the details of *how* to draw to the screen when we created our pipeline, so here we can just tell Vulkan to go ahead and use it.
+The methods before the `draw` command are fairly self-explanatory. We tell Vulkan what graphics pipeline, vertex buffers, and viewport we want to use for any draw operation to follow.
+
+The `draw` command takes in a count of how many things we're rendering as well as what index to start from in the given buffer. We already specified the details of *how* to draw to the screen when we created our pipeline, so here we can just tell Vulkan to go ahead and use it.
 
 In any case, let's run the program and see what we've got.
 
@@ -243,4 +251,4 @@ And that's it, a new input source defined and hooked up to our shaders. At this 
 
 Much more striking, I think you'll agree. In the next lesson we'll look at how to start manipulating our output to do things like rotate them or move them around.
 
-[lesson source code](../lessons/2.%20Triangle)
+[lesson source code](https://github.com/taidaesal/vulkano_tutorial/tree/gh-pages/lessons/2.%20Triangle)

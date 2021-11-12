@@ -32,11 +32,11 @@ A face which has textures but no normals would be
 f 3/6 1/1 5/7
 ```
 
-This is only a small sub-set of the total functionality offered by the obj file format. For a more complete understanding, the [wikipedia page](https://en.wikipedia.org/wiki/Wavefront_.obj_file) is a good place to start.
+This is only a small sub-set of the total functionality offered by the obj file format. For a more complete understanding, the [Wikipedia page](https://en.wikipedia.org/wiki/Wavefront_.obj_file) is a good place to start.
 
 #### Blender Exporter
 
-I've generated a number of model files and stored them in the folder at `src/models`. I used Blender to export the shapes and a number of them were provided by default or easily available. The following two images show how I exported the files. I stuck to "simple" models but you should be able to use the same process to produce something more complicated.
+I've generated a number of model files and stored them in the folder at `data/models` in the tutorial's root directory. I used Blender to export the shapes and a number of them were provided by default or easily available. The following two images show how I exported the files. I stuck to "simple" models but you should be able to use the same process to produce something more complicated.
 
 ![image showing the location of the export option in Blender](./imgs/9/export_1.png)
 
@@ -73,7 +73,7 @@ From this point on we can use `NormalVertex` with our Vulkano code as usual.
 I added a `Model` data type to handle loading the obj file as well as keeping track of the model transformation matrix. This is part of the process of moving towards having more than one model on screen, just like we did with lights. That's for another time though, so let's just look at how we use `Model`.
 
  ```rust
-let mut cube = Model::new("./src/models/cube.obj").build();
+let mut cube = Model::new("data/models/cube.obj").build();
 cube.translate(vec3(0.0, 0.0, -2.5));
 ```
 
@@ -92,7 +92,7 @@ let vertex_buffer = CpuAccessibleBuffer::from_iter(
 This is how we declare our vertex buffer. Instead of using a hard-coded array to hold the vertex data we ask our `Model` instance to give us the array of the data it's loaded. As you can see, it's much nicer-looking than what we had before. This sort of generality means that the same code can handle new model data without needing to be rewritten.
 
 ```rust
-let uniform_buffer_subbuffer = {
+let uniform_buffer_subbuffer = Arc::new({
     let elapsed = rotation_start.elapsed().as_secs() as f64 + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
     let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
     cube.zero_rotation();
@@ -107,7 +107,7 @@ let uniform_buffer_subbuffer = {
     };
 
     uniform_buffer.next(uniform_data).unwrap()
-};
+});
 ```
 
 This is the other major change we're making. You can see that we have moved the rotation logic to the `Model` the same way we did with the translation logic. We call `cube.zero_rotation();` to bring our `Model`'s rotation matrix back to zero. Without zeroing the rotation will accelerate without bounds
@@ -120,6 +120,25 @@ And that's it! There's a lot of new code on our backend but actually using it is
 
 At this point, this cube should seem like an old friend. As you can see, I reverted back to using a single white light source but if you left your lighting untouched from the last lesson it should look the same as it did back then.
 
+#### A Side Note on Files
+
+Earlier, I mentioned that our models live in the root directory of the tutorials project space at `vulkano_tutorial/data/models`. This may seem a bit odd if you remember that we load our shaders with code like this:
+
+```rust
+mod ambient_vert {
+    vulkano_shaders::shader! {
+        ty: "vertex",
+        path: "src/shaders/ambient.vert"
+    }
+}
+```
+
+Why do we get to store our shaders in the local project directory while our models live in a "global" place? 
+
+The main reason for this is that what files Rust can find depends on *where it's being run from*. Macros like `shader!` aren't "run" in the traditional sense, but they are expanded and resolved at compile time. From the perspective of the Rust compiler working on resolving this macro, the "working directory" is the one the source file is located in. Meanwhile, our models are loaded at *runtime* which means their working directory is whatever directory `cargo` is being run from. Since these tutorials are intended to be run from within the base `vulkano_tutorial` folder, that means all file paths have to be expressed relative to that.
+
+## A More Complicated Example
+
 Let's move on to a more complicated model. Included in our `models` directory is a file for [Suzanne](https://en.wikipedia.org/wiki/Blender_(software)#Suzanne,_the_%22monkey%22_mascot). This is a common [standard reference object](https://en.wikipedia.org/wiki/List_of_common_3D_test_models) used in 3D rendering similar to the famous [Utah teapot](https://en.wikipedia.org/wiki/Utah_teapot). It is also the mascot for the open-source [Blender](https://www.blender.org/) 3D modeling and animation program. The image blow is what Suzanne looks like inside Blender.
 
 ![a picture of a 3D rendering of a monkey's head affectionately named Suzanne](./imgs/9/suzanne_blender.png)
@@ -131,7 +150,7 @@ let mut cube = Model::new("./src/models/suzanne.obj").build();
 cube.translate(vec3(0.0, 0.0, -1.5));
 ```
 
-![a picture of suzanne showing apparent transparency](./imgs/9/suzanne_1.png)
+![a picture of Suzanne showing apparent transparency](./imgs/9/suzanne_1.png)
 
 Well that's kind of horrifying. What's gone wrong?
 
@@ -271,48 +290,91 @@ let dummy_verts = CpuAccessibleBuffer::from_iter(
 We can remove `uniform_buffer_subbuffer` from `ambient_set` as well as `directional_set`
 
 ```rust
-let ambient_layout = ambient_pipeline.descriptor_set_layout(0).unwrap();
-let ambient_set = Arc::new(PersistentDescriptorSet::start(ambient_layout.clone())
-    .add_image(color_buffer.clone()).unwrap()
-    .add_image(normal_buffer.clone()).unwrap()
-    .add_buffer(ambient_uniform_subbuffer.clone()).unwrap()
-    .build().unwrap());
+let ambient_layout = ambient_pipeline
+    .layout()
+    .descriptor_set_layouts()
+    .get(0)
+    .unwrap();
+let mut ambient_set_builder = PersistentDescriptorSet::start(ambient_layout.clone());
+ambient_set_builder.add_image(color_buffer.clone()).unwrap();
+ambient_set_builder
+    .add_image(normal_buffer.clone())
+    .unwrap();
+ambient_set_builder
+    .add_buffer(ambient_uniform_subbuffer)
+    .unwrap();
+let ambient_set = Arc::new(ambient_set_builder.build().unwrap());
 ```
 
 ```rust
-let directional_layout = directional_pipeline.descriptor_set_layout(0).unwrap();
-let mut directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clone())
-    .add_image(color_buffer.clone()).unwrap()
-    .add_image(normal_buffer.clone()).unwrap()
-    .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
-    .build().unwrap());
+let directional_layout = directional_pipeline
+    .layout()
+    .descriptor_set_layouts()
+    .get(0)
+    .unwrap();
+let mut directional_set_builder =
+    PersistentDescriptorSet::start(directional_layout.clone());
+directional_set_builder
+    .add_image(color_buffer.clone())
+    .unwrap();
+directional_set_builder
+    .add_image(normal_buffer.clone())
+    .unwrap();
+directional_set_builder
+    .add_buffer(directional_uniform_subbuffer.clone())
+    .unwrap();
+let directional_set = Arc::new(directional_set_builder.build().unwrap());
 ```
 
 #### Updating the Draw Command
 
 Updating the draw commands is simple. Find the draw commands associated with the lighting pass and replace `vertex_buffer` with `dummy_verts`. The following is what my rendering commands look like, remember that I've gone back to using one directional light.
 ```rust
-let mut commands = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
+let mut commands = AutoCommandBufferBuilder::primary(
+    device.clone(),
+    queue.family(),
+    CommandBufferUsage::OneTimeSubmit,
+)
+.unwrap();
 commands
-    .begin_render_pass(framebuffers[image_num].clone(), SubpassContents::Inline, clear_values)
+    .begin_render_pass(
+        framebuffers[image_num].clone(),
+        SubpassContents::Inline,
+        clear_values,
+    )
     .unwrap()
-    .draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), (), vec![])
+    .set_viewport(0, [viewport.clone()])
+    .bind_pipeline_graphics(deferred_pipeline.clone())
+    .bind_descriptor_sets(
+        PipelineBindPoint::Graphics,
+        deferred_pipeline.layout().clone(),
+        0,
+        deferred_set.clone(),
+    )
+    .bind_vertex_buffers(0, vertex_buffer.clone())
+    .draw(vertex_buffer.len() as u32, 1, 0, 0)
     .unwrap()
     .next_subpass(SubpassContents::Inline)
-    .unwrap();
-
-let directional_uniform_subbuffer = generate_directional_buffer(&directional_buffer, &directional_light);
-let directional_set = Arc::new(PersistentDescriptorSet::start(directional_pipeline.clone(), 0)
-    .add_image(color_buffer.clone()).unwrap()
-    .add_image(normal_buffer.clone()).unwrap()
-    .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
-    .build().unwrap());
-commands
-    .draw(directional_pipeline.clone(), &dynamic_state, dummy_verts.clone(), directional_set.clone(), (), vec![])
-    .unwrap();
-
-commands
-    .draw(ambient_pipeline.clone(), &dynamic_state, dummy_verts.clone(), ambient_set.clone(), (), vec![])
+    .unwrap()
+    .bind_pipeline_graphics(directional_pipeline.clone())
+    .bind_descriptor_sets(
+        PipelineBindPoint::Graphics,
+        directional_pipeline.layout().clone(),
+        0,
+        directional_set.clone(),
+    )
+    .bind_vertex_buffers(0, dummy_verts.clone())
+    .draw(dummy_verts.len() as u32, 1, 0, 0)
+    .unwrap()
+    .bind_pipeline_graphics(ambient_pipeline.clone())
+    .bind_descriptor_sets(
+        PipelineBindPoint::Graphics,
+        ambient_pipeline.layout().clone(),
+        0,
+        ambient_set.clone(),
+    )
+    .bind_vertex_buffers(0, dummy_verts.clone())
+    .draw(dummy_verts.len() as u32, 1, 0, 0)
     .unwrap()
     .end_render_pass()
     .unwrap();
@@ -327,4 +389,4 @@ Let's execute the code and see what happens.
 
 There's the friendly and slightly pointy monkey we were hoping for. With our new ability to load complex models, we've taken a major step towards our goal of a working rendering system.
 
-[lesson source code](../lessons/9.%20Model%20Loading)
+[lesson source code](https://github.com/taidaesal/vulkano_tutorial/tree/gh-pages/lessons/9.%20Model%20Loading)

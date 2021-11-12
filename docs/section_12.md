@@ -24,7 +24,7 @@ This is, no doubt, very fascinating but is only half of the scene. After all, wh
 
 The full version of the diagram, and the one we will be implementing in this lesson, is this:
 
-![the same diagram as above but containing the reflection and viwer vectors](./imgs/12/specular.png)
+![the same diagram as above but containing the reflection and viewer vectors](./imgs/12/specular.png)
 
 When the light ray `L̅` strikes the surface it is reflected off. In the above diagram we've labeled this *reflection vector* with `R̅`. We've also added a camera off to one side. This camera represents where the *viewer* position is relative to the surface. We've marked the vector from the camera to the surface with a dotted line labeled `V̅`. The angle between the reflection vector and the view vector we've labeled alpha, `α`.
 
@@ -45,68 +45,77 @@ There are a couple of approaches we could use. The most common approach is to us
 ```rust
 pub struct System {
     // ...
-    frag_location_buffer: Arc<AttachmentImage>,
-    specular_buffer: Arc<AttachmentImage>,
+    frag_location_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
+    specular_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
     // ...
 }
 
 impl System {
     pub fn new(event_loop: &EventLoop<()>) -> System  {
         // ...
-        let render_pass = Arc::new(vulkano::ordered_passes_renderpass!(device.clone(),
-            attachments: {
-                final_color: {
-                    load: Clear,
-                    store: Store,
-                    format: swapchain.format(),
-                    samples: 1,
+        let render_pass = Arc::new(
+            vulkano::ordered_passes_renderpass!(device.clone(),
+                attachments: {
+                    final_color: {
+                        load: Clear,
+                        store: Store,
+                        format: swapchain.format(),
+                        samples: 1,
+                    },
+                    color: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::A2B10G10R10_UNORM_PACK32,
+                        samples: 1,
+                    },
+                    normals: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::R16G16B16A16_SFLOAT,
+                        samples: 1,
+                    },
+                    frag_location: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::R16G16B16A16_SFLOAT,
+                        samples: 1,
+                    },
+                    specular: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::R16G16_SFLOAT,
+                        samples: 1,
+                    },
+                    depth: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::D16_UNORM,
+                        samples: 1,
+                    }
                 },
-                color: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::A2B10G10R10UnormPack32,
-                    samples: 1,
-                },
-                normals: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R16G16B16A16Sfloat,
-                    samples: 1,
-                },
-                frag_location: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R16G16B16A16Sfloat,
-                    samples: 1,
-                },
-                specular: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R16G16Sfloat,
-                    samples: 1,
-                },
-                depth: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::D16Unorm,
-                    samples: 1,
-                }
-            },
-            passes: [
-                {
-                    color: [color, normals, frag_location, specular],
-                    depth_stencil: {depth},
-                    input: []
-                },
-                {
-                    color: [final_color],
-                    depth_stencil: {depth},
-                    input: [color, normals, frag_location, specular]
-                }
-            ]
-        ).unwrap());
+                passes: [
+                    {
+                        color: [color, normals, frag_location, specular],
+                        depth_stencil: {depth},
+                        input: []
+                    },
+                    {
+                        color: [final_color],
+                        depth_stencil: {depth},
+                        input: [color, normals, frag_location, specular]
+                    }
+                ]
+            )
+            .unwrap(),
+        );
         // ...
-        let (framebuffers, color_buffer, normal_buffer, frag_location_buffer, specular_buffer) = System::window_size_dependent_setup(device.clone(), &images, render_pass.clone(), &mut dynamic_state);
+        let (framebuffers, color_buffer, normal_buffer, frag_location_buffer, specular_buffer) =
+            System::window_size_dependent_setup(
+                device.clone(),
+                &images,
+                render_pass.clone(),
+                &mut viewport,
+            );
         // ...
         System{
             //...
@@ -119,36 +128,90 @@ impl System {
     fn window_size_dependent_setup(
         device: Arc<Device>,
         images: &[Arc<SwapchainImage<Window>>],
-        render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
-        dynamic_state: &mut DynamicState
-    ) -> (Vec<Arc<dyn FramebufferAbstract + Send + Sync>>, Arc<AttachmentImage>, Arc<AttachmentImage>, Arc<AttachmentImage>, Arc<AttachmentImage>) {
+        render_pass: Arc<RenderPass>,
+        viewport: &mut Viewport,
+    ) -> (
+        Vec<Arc<dyn FramebufferAbstract>>,
+        Arc<ImageView<Arc<AttachmentImage>>>,
+        Arc<ImageView<Arc<AttachmentImage>>>,
+        Arc<ImageView<Arc<AttachmentImage>>>,
+        Arc<ImageView<Arc<AttachmentImage>>>,
+    ) {        
         let dimensions = images[0].dimensions();
+        viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-            depth_range: 0.0 .. 1.0,
-        };
-        dynamic_state.viewports = Some(vec!(viewport));
+        let color_buffer = ImageView::new(
+            AttachmentImage::transient_input_attachment(
+                device.clone(),
+                dimensions,
+                Format::A2B10G10R10_UNORM_PACK32,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let normal_buffer = ImageView::new(
+            AttachmentImage::transient_input_attachment(
+                device.clone(),
+                dimensions,
+                Format::R16G16B16A16_SFLOAT,
+            )
+            .unwrap(),
+        )
+        .unwrap();
 
-        let color_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::A2B10G10R10UnormPack32).unwrap();
-        let normal_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::R16G16B16A16Sfloat).unwrap();
-        let frag_location_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::R16G16B16A16Sfloat).unwrap();
-        let specular_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::R16G16Sfloat).unwrap();
-        let depth_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::D16Unorm).unwrap();
+        let frag_location_buffer = ImageView::new(
+            AttachmentImage::transient_input_attachment(
+                device.clone(),
+                dimensions,
+                Format::R16G16B16A16_SFLOAT,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let specular_buffer = ImageView::new(
+            AttachmentImage::transient_input_attachment(
+                device.clone(),
+                dimensions,
+                Format::R16G16_SFLOAT,
+            )
+            .unwrap(),
+        )
+        .unwrap();
 
-        (images.iter().map(|image| {
-            Arc::new(
-                Framebuffer::start(render_pass.clone())
-                    .add(image.clone()).unwrap()
-                    .add(color_buffer.clone()).unwrap()
-                    .add(normal_buffer.clone()).unwrap()
-                    .add(frag_location_buffer.clone()).unwrap()
-                    .add(specular_buffer.clone()).unwrap()
-                    .add(depth_buffer.clone()).unwrap()
-                    .build().unwrap()
-            ) as Arc<dyn FramebufferAbstract + Send + Sync>
-        }).collect::<Vec<_>>(), color_buffer.clone(), normal_buffer.clone(), frag_location_buffer.clone(), specular_buffer.clone())
+        (
+            images
+                .iter()
+                .map(|image| {
+                    let view = ImageView::new(image.clone()).unwrap();
+                    let depth_buffer = ImageView::new(
+                        AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM)
+                            .unwrap(),
+                    )
+                    .unwrap();
+                    Arc::new(
+                        Framebuffer::start(render_pass.clone())
+                            .add(view)
+                            .unwrap()
+                            .add(color_buffer.clone())
+                            .unwrap()
+                            .add(normal_buffer.clone())
+                            .unwrap()
+                            .add(frag_location_buffer.clone())
+                            .unwrap()
+                            .add(specular_buffer.clone())
+                            .unwrap()
+                            .add(depth_buffer.clone())
+                            .unwrap()
+                            .build()
+                            .unwrap(),
+                    ) as Arc<dyn FramebufferAbstract>
+                })
+                .collect::<Vec<_>>(),
+            color_buffer.clone(),
+            normal_buffer.clone(),
+            frag_location_buffer.clone(),
+            specular_buffer.clone(),
+        )
     }
 }
 ```
@@ -201,15 +264,28 @@ impl System {
                 position: self.vp.camera_pos.into(),
             }
         ).unwrap();
-        let directional_layout = self.directional_pipeline.descriptor_set_layout(0).unwrap();
-        let directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clone())
-            .add_image(self.color_buffer.clone()).unwrap()
-            .add_image(self.normal_buffer.clone()).unwrap()
-            .add_image(self.frag_location_buffer.clone()).unwrap()
-            .add_image(self.specular_buffer.clone()).unwrap()
-            .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
-            .add_buffer(camera_buffer.clone()).unwrap()
-            .build().unwrap());
+        let directional_layout = self
+            .directional_pipeline
+            .layout()
+            .descriptor_set_layouts()
+            .get(0)
+            .unwrap();
+        let mut directional_set_builder =
+            PersistentDescriptorSet::start(directional_layout.clone());
+        directional_set_builder
+            .add_image(self.color_buffer.clone())
+            .unwrap()
+            .add_image(self.normal_buffer.clone())
+            .unwrap()
+            .add_image(self.frag_location_buffer.clone())
+            .unwrap()
+            .add_image(self.specular_buffer.clone())
+            .unwrap()
+            .add_buffer(directional_uniform_subbuffer.clone())
+            .unwrap()
+            .add_buffer(camera_buffer.clone())
+            .unwrap();
+        let directional_set = Arc::new(directional_set_builder.build().unwrap());
         //...
     }
 
@@ -225,12 +301,19 @@ impl System {
             }
         ).unwrap();
         
-        let deferred_layout = self.deferred_pipeline.descriptor_set_layout(1).unwrap();
-        let model_set:Arc<dyn DescriptorSet + Send + Sync> = Arc::new(
-            PersistentDescriptorSet::start(deferred_layout.clone())
-                .add_buffer(model_uniform_subbuffer.clone()).unwrap()
-                .add_buffer(specular_buffer.clone()).unwrap()
-                .build().unwrap());
+        let deferred_layout_model = self
+            .deferred_pipeline
+            .layout()
+            .descriptor_set_layouts()
+            .get(1)
+            .unwrap();
+        let mut model_set_builder = PersistentDescriptorSet::start(deferred_layout_model.clone());
+        model_set_builder
+            .add_buffer(model_uniform_subbuffer.clone())
+            .unwrap()
+            .add_buffer(specular_buffer.clone())
+            .unwrap();
+        let model_set = Arc::new(model_set_builder.build().unwrap());
         //...
     }
 
@@ -242,7 +325,18 @@ impl System {
     
     pub fn recreate_swapchain(&mut self) {
         //...
-        let (new_framebuffers, new_color_buffer, new_normal_buffer, new_frag_location_buffer, new_specular_buffer) = System::window_size_dependent_setup(self.device.clone(), &new_images, self.render_pass.clone(), &mut self.dynamic_state);
+        let (
+            new_framebuffers,
+            new_color_buffer,
+            new_normal_buffer,
+            new_frag_location_buffer,
+            new_specular_buffer,
+        ) = System::window_size_dependent_setup(
+            self.device.clone(),
+            &new_images,
+            self.render_pass.clone(),
+            &mut self.viewport,
+        );
         self.framebuffers = new_framebuffers;
         self.color_buffer = new_color_buffer;
         self.normal_buffer = new_normal_buffer;
@@ -367,7 +461,7 @@ fn main() {
     let x: f32 = 3.0 * elapsed_as_radians.cos();
     let z: f32 = -2.0 + (3.0 * elapsed_as_radians.sin());
 
-    let directional_light = DirectionalLight::new([x, 0.0, z], [1.0, 1.0, 1.0]);
+    let directional_light = DirectionalLight::new([x, 0.0, z, 1.0], [1.0, 1.0, 1.0]);
     // ...
     system.geometry(&mut obj);
     // ...
@@ -387,7 +481,7 @@ void main() {
 ```
 comment out the combined code and just show the specular highlights and run the code.
 
-![a cube face showing the calculated spcular highlight](./imgs/12/specular_only.png)
+![a cube face showing the calculated specular highlight](./imgs/12/specular_only.png)
 
 This is what we're trying to find. The bright spot created when a light source shines onto a reflective object. The size and brightness of this spot are controlled by the specular data uniform we pass in to the deferred shader.
 
@@ -411,7 +505,7 @@ Looking good. Now, let's modify our code to use a more complicated model and do 
 ```rust
 fn main() {
     // ...
-    let mut obj = Model::new("./src/models/suzanne.obj").build();
+    let mut obj = Model::new("data/models/suzanne.obj").build();
     obj.translate(vec3(0.0, 0.0, -2.0));
     obj.rotate(3.14, vec3(0.0, 1.0, 0.0));
     // ...
@@ -507,10 +601,10 @@ Let's change things up a bit. Let's have two cubes side-by-side, one with a high
 ```rust
 fn main() {
     //...
-    let mut cube1 = Model::new("./src/models/cube.obj").specular(0.5, 12.0).build();
+    let mut cube1 = Model::new("data/models/cube.obj").specular(0.5, 12.0).build();
     cube1.translate(vec3(1.1, 0.0, -2.0));
 
-    let mut cube2 = Model::new("./src/models/cube.obj").specular(0.5, 128.0).build();
+    let mut cube2 = Model::new("data/models/cube.obj").specular(0.5, 128.0).build();
     cube2.translate(vec3(-1.1, 0.0, -2.0));}
     //...
 ```
@@ -535,4 +629,4 @@ All this isn't to say that it's not important. Lighting is one of the deepest, m
 
 If you've been looking for a smaller project to do on your own I would suggest you read the next lesson on textures and then see if you can implement bump mapping. It can be easy to get overwhelmed when doing a project involving something as complex as graphics but improving the lighting model from these tutorials is a smaller, focused task that can really improve the quality of your images.
 
-[Lesson Source Code](../lessons/12.%20Light%20III)
+[Lesson Source Code](https://github.com/taidaesal/vulkano_tutorial/tree/gh-pages/lessons/12.%20Light%20III)

@@ -45,13 +45,13 @@ This is the blank canvas we will be painting with our texture image.
 
 We access texture images through vector values we call _UV values_ in a process called _UV mapping_. This lets us map pixels from the input pixels onto the rendered pixels on the screen. 
 
-![a picture of a blue and red gradiant with U and V axis labeled](./imgs/13/uv.png)
+![a picture of a blue and red gradient with U and V axis labeled](./imgs/13/uv.png)
 
 The UV coordinates follow the X,Y axis we're familiar with from elsewhere. Note that UV coordinates follow the same coordinate space as the rest of Vulkan with the origin point in the upper left corner with the positive U-axis moving further to the right and the positive V-axis moving further "down" the image. Another thing to note is that the axis goes from 0.0 to 1.0. Unlike values in model space only values between 0 and 1 are accepted.
 
 Here is an example of a triangle with the UV values for each vertex labeled.
 
-![a picture of the gradiant from the earlier picture with a triangle outlined inside](./imgs/13/triangle1.png)
+![a picture of the gradient from the earlier picture with a triangle outlined inside](./imgs/13/triangle1.png)
 
 ![the same picture as above but with all colors outside the triangle removed](./imgs/13/triangle2.png)
 
@@ -95,7 +95,7 @@ let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::
 ].iter().cloned()).unwrap();
 ```
 
-Lastly, let's create a new `textures` directory and add our texture there.
+Lastly, let's create a new `textures` directory and add our texture there. We store texture locally as we will be loading the texture with a macro, same as our shaders.
 
 ```
 src/
@@ -114,28 +114,25 @@ let (texture, tex_future) = {
     let png_bytes = include_bytes!("./textures/diamond.png").to_vec();
     let cursor = Cursor::new(png_bytes);
     let decoder = png::Decoder::new(cursor);
-    let (info, mut reader) = decoder.read_info().unwrap();
-    let mut image_data = Vec::new();
-    let depth: u32 = match info.bit_depth {
-        png::BitDepth::One => 1,
-        png::BitDepth::Two => 2,
-        png::BitDepth::Four => 4,
-        png::BitDepth::Eight => 8,
-        png::BitDepth::Sixteen => 16
-    };
-    image_data.resize((info.width * info.height * depth) as usize, 0);
-    reader.next_frame(&mut image_data).unwrap();
-    let dimensions = Dimensions::Dim2d {
+    let mut reader = decoder.read_info().unwrap();
+    let info = reader.info();
+    let dimensions = ImageDimensions::Dim2d {
         width: info.width,
         height: info.height,
+        array_layers: 1,
     };
-    ImmutableImage::from_iter(
+    let mut image_data = Vec::new();
+    image_data.resize((info.width * info.height * 4) as usize, 0);
+    reader.next_frame(&mut image_data).unwrap();
+    let (image, future) = ImmutableImage::from_iter(
         image_data.iter().cloned(),
         dimensions,
         MipmapsCount::One,
-        Format::R8G8B8A8Srgb,
+        Format::R8G8B8A8_SRGB,
         queue.clone(),
-    ).unwrap()
+    )
+    .unwrap();
+    (ImageView::new(image).unwrap(), future)
 };
 ```
 
@@ -145,7 +142,7 @@ let's go bit-by-bit
 let png_bytes = include_bytes!("./textures/diamond.png").to_vec();
 ```
 
-Here we use a macro provided by the Rust standard library, `include_bytes!`, to read in our texture file. We load it as a byte array that has the type `&'static [u8; N]`.
+Here we use a macro provided by the Rust standard library, `include_bytes!`, to read in our texture file. We load it as a byte array that has the type `&'static [u8; N]`. This means that the data will be added to our executable. Doing this is fine for our learning app but textures will need to be loaded dynamically.
 
 ```rust
 let cursor = Cursor::new(png_bytes);
@@ -155,7 +152,8 @@ let decoder = png::Decoder::new(cursor);
 `Cursor` is another type provided by the Rust standard library. It wraps a byte array to provide an implementation of the `Read` trait. This lets us pass it into the `Decoder` provided by the `png` crate we pulled in earlier.
 
 ```rust
-let (info, mut reader) = decoder.read_info().unwrap();
+let mut reader = decoder.read_info().unwrap();
+let info = reader.info();
 ```
 
 This gives us some information about the png image we've loaded as well as a new `Reader` that we can use to actually load the source bytes into a vector.
@@ -176,17 +174,20 @@ reader.next_frame(&mut image_data).unwrap();
 This is how we actually load the image into a Rust vector. First we declare an empty vector, then we resize the vector based on the image dimensions we've found with the `info` variable. The specific call to `reader.next_frame` is because a png file can have multiple "frames". We don't make use of that feature so we can ignore the complications that can come from that.
 
 ```rust
-let dimensions = Dimensions::Dim2d {
+let dimensions = ImageDimensions::Dim2d {
     width: info.width,
     height: info.height,
+    array_layers: 1,
 };
-ImmutableImage::from_iter(
+let (image, future) = ImmutableImage::from_iter(
     image_data.iter().cloned(),
     dimensions,
     MipmapsCount::One,
-    Format::R8G8B8A8Srgb,
+    Format::R8G8B8A8_SRGB,
     queue.clone(),
-).unwrap()
+)
+.unwrap();
+(ImageView::new(image).unwrap(), future)
 ```
 
 The last part of this code block is where we bring Vulkan into it. We're seeing `ImmutableImage` for the first time here but I bet you can probably guess what it is. It's the brother type to `AttachmentImage` and `SwapchainImage` and is a data buffer type, it doesn't have to store literal image data but in this case that's exactly what we're doing right here. We can use an `ImmutableImage` here because we won't ever need to change the data we're storing in this `Image`. We don't strictly have to use it but it gives the Vulkan driver a hint about expected use that lets it do optimizations behind the scenes.
@@ -225,11 +226,14 @@ This is new but it follows the same pattern for Vulkano data before. Earlier, wh
 The descriptor set looks fairly similar to what we've seen before. We treat textures as a form of `uniform` so we use a new method, `add_sampled_image`, to add the texture and its sampler to the descriptor set.
 
 ```rust
-let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
-    .add_buffer(uniform_buffer_subbuffer).unwrap()
-    .add_sampled_image(texture.clone(), sampler.clone()).unwrap()
-    .build().unwrap()
-);
+let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+set_builder
+    .add_buffer(uniform_buffer_subbuffer)
+    .unwrap()
+    .add_sampled_image(texture.clone(), sampler.clone())
+    .unwrap();
+let set = Arc::new(set_builder.build().unwrap());
 ```
 
 ## Shaders
@@ -307,8 +311,8 @@ We won't be implementing bump mapping as part of our tutorials but it's somethin
 
 Noise or [gradient noise](https://en.wikipedia.org/wiki/Gradient_noise) is a form of randomness that is often used in computer games. An example of this would be a terrain height-map. We generate a map, say, in the style of Minecraft. However, even "random" shapes generated on the CPU tend to look generic and repetitive thanks to the difficulties with generating true randomness on a computer. We can apply a "noise" function to generate a texture that we can use to modify things on the fly.
 
-![a picture of noise output by a perlin generator](./imgs/13/noise.png)
+![a picture of noise output by a Perlin generator](./imgs/13/noise.png)
 
 In our Minecraft-style example map we could use the above image to modify it. We could map each pixel of the noise texture to a point on the generated terrain and then move the surface of the map up or down based on the value we've found from the noise texture. Real terrain generators often use multiple noise textures, each one applying a different sort of transformation to the underlying map.
 
-[Lesson Source Code](../lessons/13.%20Textures)
+[Lesson Source Code](https://github.com/taidaesal/vulkano_tutorial/tree/gh-pages/lessons/13.%20Textures)

@@ -1,11 +1,11 @@
-// Copyright (c) 2020 taidaesal
+// Copyright (c) 2021 taidaesal
 // Licensed under the MIT license
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>
 
 #![allow(dead_code)]
 use super::obj_loader::{Loader, NormalVertex};
 
-use nalgebra_glm::{identity, rotate_normalized_axis, TMat4, TVec3, translate};
+use nalgebra_glm::{identity, rotate_normalized_axis, translate, TMat4, TVec3};
 
 /// Holds our data for a renderable model, including the model matrix data
 ///
@@ -21,7 +21,7 @@ pub struct Model {
     // we might call multiple translation/rotation calls
     // in between asking for the model matrix. This lets
     // only recreate the model matrix when needed.
-    requires_update: bool
+    requires_update: bool,
 }
 
 pub struct ModelBuilder {
@@ -35,7 +35,7 @@ impl ModelBuilder {
         ModelBuilder {
             file_name: file,
             custom_color: [1.0, 0.35, 0.137],
-            invert: true
+            invert: true,
         }
     }
 

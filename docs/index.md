@@ -4,7 +4,25 @@ This site is intended to serve as a tutorial for using Vulkan in Rust via the Vu
 
 Note: All code is provided under the [MIT License](http://opensource.org/licenses/MIT) and includes samples taken from official Vulkano examples. All text and images are licensed under the [Creative Commons Attribution](https://creativecommons.org/licenses/by/4.0/) license (CC BY 4.0)
 
-## Lessons
+
+## Requirements
+
+The following needs to be present on your computer if you want to follow along:
+
+1: [Rust](https://www.rust-lang.org/) version 1.56.1 or later
+
+2: A computer that supports Vulkan. You can check your hardware at the vendor's website. 
+ - [NVIDIA](https://developer.nvidia.com/vulkan-driver), [AMD](https://www.amd.com/en/technologies/vulkan), [Intel](https://www.intel.com/content/www/us/en/support/articles/000005524/graphics.html)
+
+3: A working install of a shader pipeline as outlined in the [main Vulkano documentation](https://github.com/vulkano-rs/vulkano)
+
+## Running the Lessons
+
+This tutorial series uses Cargo's [Workspaces](https://doc.rust-lang.org/book/ch14-03-cargo-workspaces.html) feature to group multiple projects into a single repo. To run cargo on a single project you can pass in the `-p` flag followed by the name of the project.
+
+All the lessons in this series are independent projects and are named `lesson_{tutorial_number}`. For example, to run the first lesson navigate to the root `vulkano_tutorial` directory and run `cargo run -p lesson_1`.
+
+## Contents
 
 ### 0. Introduction
 Provides a brief overview of some Vulkan considerations as well as a couple of notes on Rust.

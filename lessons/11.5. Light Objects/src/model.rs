@@ -1,11 +1,13 @@
-// Copyright (c) 2020 taidaesal
+// Copyright (c) 2021 taidaesal
 // Licensed under the MIT license
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>
 
 #![allow(dead_code)]
 use super::obj_loader::{ColoredVertex, Loader, NormalVertex};
 
-use nalgebra_glm::{identity, rotate_normalized_axis, TMat4, TVec3, inverse_transpose, scale, translate, vec3};
+use nalgebra_glm::{
+    identity, inverse_transpose, rotate_normalized_axis, scale, translate, vec3, TMat4, TVec3,
+};
 
 /// Holds our data for a renderable model, including the model matrix data
 ///
@@ -23,7 +25,7 @@ pub struct Model {
     // we might call multiple translation/rotation calls
     // in between asking for the model matrix. This lets
     // only recreate the model matrix when needed.
-    requires_update: bool
+    requires_update: bool,
 }
 
 pub struct ModelBuilder {
@@ -83,14 +85,12 @@ impl Model {
     }
 
     pub fn color_data(&self) -> Vec<ColoredVertex> {
-        let mut ret:Vec<ColoredVertex> = Vec::new();
+        let mut ret: Vec<ColoredVertex> = Vec::new();
         for v in &self.data {
-            ret.push(
-                ColoredVertex {
-                    position: v.position,
-                    color: v.color
-                }
-            );
+            ret.push(ColoredVertex {
+                position: v.position,
+                color: v.color,
+            });
         }
         ret
     }
@@ -102,7 +102,10 @@ impl Model {
     pub fn model_matrices(&mut self) -> (TMat4<f32>, TMat4<f32>) {
         if self.requires_update {
             self.model = self.translation * self.rotation;
-            self.model = scale(&self.model, &vec3(self.uniform_scale, self.uniform_scale, self.uniform_scale));
+            self.model = scale(
+                &self.model,
+                &vec3(self.uniform_scale, self.uniform_scale, self.uniform_scale),
+            );
             self.normals = inverse_transpose(self.model);
             self.requires_update = false;
         }

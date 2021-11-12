@@ -60,7 +60,7 @@ let (model_mat, normal_mat) = cube.model_matrices();
 
 #### Change our VP Buffer
 
-So far all our uniforms have been created using `CpuBufferPool`. This is because all our uniforms have been updated every frame so we want something that supports freqent updates. However, now that we've turned our MVP structure into a VP one, we have a situation where one of our uniform inputs *won't* need to be updated. Our view and projection matrices will only need to be updated when the screen is resized.
+So far all our uniforms have been created using `CpuBufferPool`. This is because all our uniforms have been updated every frame so we want something that supports frequent updates. However, now that we've turned our MVP structure into a VP one, we have a situation where one of our uniform inputs *won't* need to be updated. Our view and projection matrices will only need to be updated when the screen is resized.
 
 Replace the existing mvp_buffer declaration with the following code. Also remember to add it into our swapchain recreation logic.
 ```rust
@@ -78,15 +78,27 @@ let vp_buffer = CpuAccessibleBuffer::from_data(
 ```rust
 if recreate_swapchain {
     let dimensions: [u32; 2] = surface.window().inner_size().into();
-    let (new_swapchain, new_images) = match swapchain.recreate_with_dimensions(dimensions) {
-        Ok(r) => r,
-        Err(SwapchainCreationError::UnsupportedDimensions) => return,
-        Err(e) => panic!("Failed to recreate swapchain: {:?}", e)
-    };
-    vp.projection = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.01, 100.0);
+    let (new_swapchain, new_images) =
+        match swapchain.recreate().dimensions(dimensions).build() {
+            Ok(r) => r,
+            Err(SwapchainCreationError::UnsupportedDimensions) => return,
+            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+        };
+    vp.projection = perspective(
+        dimensions[0] as f32 / dimensions[1] as f32,
+        180.0,
+        0.01,
+        100.0,
+    );
 
     swapchain = new_swapchain;
-    let (new_framebuffers, new_color_buffer, new_normal_buffer) = window_size_dependent_setup(device.clone(), &new_images, render_pass.clone(), &mut dynamic_state);
+    let (new_framebuffers, new_color_buffer, new_normal_buffer) =
+        window_size_dependent_setup(
+            device.clone(),
+            &new_images,
+            render_pass.clone(),
+            &mut viewport,
+        );
     framebuffers = new_framebuffers;
     color_buffer = new_color_buffer;
     normal_buffer = new_normal_buffer;
@@ -98,13 +110,18 @@ if recreate_swapchain {
         deferred_vert::ty::VP_Data {
             view: vp.view.into(),
             projection: vp.projection.into(),
-        }
-    ).unwrap();
+        },
+    )
+    .unwrap();
 
-    let deferred_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
-    vp_set = Arc::new(PersistentDescriptorSet::start(deferred_layout.clone())
-        .add_buffer(new_vp_buffer.clone()).unwrap()
-        .build().unwrap());
+    let deferred_layout = deferred_pipeline
+        .layout()
+        .descriptor_set_layouts()
+        .get(0)
+        .unwrap();
+    let mut vp_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
+    vp_set_builder.add_buffer(new_vp_buffer.clone()).unwrap();
+    vp_set = Arc::new(vp_set_builder.build().unwrap());
 
     recreate_swapchain = false;
 }
@@ -112,10 +129,15 @@ if recreate_swapchain {
 
 We can remove our mvp sub-buffer declaration code and update the descriptor set to be:
 ```rust
-let deferred_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
-let deferred_set = Arc::new(PersistentDescriptorSet::start(deferred_layout.clone())
-    .add_buffer(vp_buffer.clone()).unwrap()
-    .build().unwrap());
+let deferred_layout = deferred_pipeline
+    .layout()
+    .descriptor_set_layouts()
+    .get(0)
+    .unwrap();
+let deferred_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
+deferred_set_builder
+    .add_buffer(vp_buffer.clone()).unwrap();
+let deferred_set = Arc::new(deferred_set_builder.build().unwrap());
 ```
 
 To be perfectly honest, this is a small saving. But it's the sort of thing we need to keep in mind if we want to squeeze every bit of bandwidth possible out of our graphics hardware.
@@ -162,10 +184,14 @@ Right now we re-declare `deferred_set` every frame. This was fine when the data 
 
 Let's move our initial declaration to just above our main rendering loop. While we're at it, let's help keep the code readable by re-naming `deferred_set` to something more descriptive, like `vp_set`
 ```rust
-let deferred_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
-let mut vp_set = Arc::new(PersistentDescriptorSet::start(deferred_layout.clone())
-    .add_buffer(vp_buffer.clone()).unwrap()
-    .build().unwrap());
+let deferred_layout = deferred_pipeline
+    .layout()
+    .descriptor_set_layouts()
+    .get(0)
+    .unwrap();
+let mut vp_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
+vp_set_builder.add_buffer(vp_buffer.clone()).unwrap();
+let mut vp_set = Arc::new(vp_set_builder.build().unwrap());
 ```
 
 We can re-create it right after we recreate our `vp_buffer` in the swapchain recreation portion of the render loop.
@@ -173,10 +199,14 @@ We can re-create it right after we recreate our `vp_buffer` in the swapchain rec
 if recreate_swapchain {
     // ...
 
-    let deferred_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
-    vp_set = Arc::new(PersistentDescriptorSet::start(deferred_layout.clone())
-        .add_buffer(vp_buffer.clone()).unwrap()
-        .build().unwrap());
+    let deferred_layout = deferred_pipeline
+        .layout()
+        .descriptor_set_layouts()
+        .get(0)
+        .unwrap();
+    let mut vp_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
+    vp_set_builder.add_buffer(new_vp_buffer.clone()).unwrap();
+    vp_set = Arc::new(vp_set_builder.build().unwrap());
 
     recreate_swapchain = false;
 }
@@ -193,7 +223,7 @@ let model_uniform_buffer = CpuBufferPool::<deferred_vert::ty::Model_Data>::unifo
 
 The following code can go where we used to declare our deferred sub-buffer and descriptor set.
 ```rust
-let model_uniform_subbuffer = {
+let model_uniform_subbuffer = Arc::new({
     let elapsed = rotation_start.elapsed().as_secs() as f64 + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
     let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
     cube.zero_rotation();
@@ -209,12 +239,19 @@ let model_uniform_subbuffer = {
     };
 
     model_uniform_buffer.next(uniform_data).unwrap()
-};
+});
 
-let deferred_layout_model = deferred_pipeline.descriptor_set_layout(1).unwrap();
-let model_set = Arc::new(PersistentDescriptorSet::start(deferred_layout_model.clone())
-    .add_buffer(model_uniform_subbuffer.clone()).unwrap()
-    .build().unwrap());
+let deferred_layout_model = deferred_pipeline
+    .layout()
+    .descriptor_set_layouts()
+    .get(1)
+    .unwrap();
+let mut model_set_builder =
+    PersistentDescriptorSet::start(deferred_layout_model.clone());
+model_set_builder
+    .add_buffer(model_uniform_subbuffer.clone())
+    .unwrap();
+let model_set = Arc::new(model_set_builder.build().unwrap());
 ```
 
 The only real thing to notice is that we used `1` as the argument for the descriptor_set_layout for the first time in this lesson series.
@@ -224,7 +261,16 @@ The only real thing to notice is that we used `1` as the argument for the descri
 Our draw command for the first render pass is pretty much the same as before. However, now we need to pass it two descriptor sets instead of one. The way to do this is fairly straightforward.
 
 ```rust
-.draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), (vp_set.clone(), model_set.clone()), (), vec![])
+.bind_pipeline_graphics(deferred_pipeline.clone())
+.bind_descriptor_sets(
+    PipelineBindPoint::Graphics,
+    deferred_pipeline.layout().clone(),
+    0,
+    (vp_set.clone(), model_set.clone()),
+)
+.bind_vertex_buffers(0, vertex_buffer.clone())
+.draw(vertex_buffer.len() as u32, 1, 0, 0)
+.unwrap()
 ```
 
 As you can see, we just pass a list of the descriptor sets inside of parenthesis.
@@ -237,4 +283,4 @@ Let's run our application. Nothing should have changed in the rendered output bu
 
 I've swapped out Suzanne for the famous Utah Teapot but, as you can see, everything seems to be working as it should.
 
-[lesson source code](../lessons/10.%20Uniform%20Refactoring)
+[lesson source code](https://github.com/taidaesal/vulkano_tutorial/tree/gh-pages/lessons/10.%20Uniform%20Refactoring)

@@ -29,46 +29,49 @@ Since there are a number of things that we'll have to discuss when it comes to a
 I've hinted before that you can define more than one pass in a `Renderpass` declaration and now it's time to make good on that promise. It is fair, in my opinion, to call the `Renderpass` code the most important part of this lesson, as this is where we will define our new structures as well as how they relate to each other.
 
 ```rust
-let render_pass = Arc::new(vulkano::ordered_passes_renderpass!(device.clone(),
-    attachments: {
-        final_color: {
-            load: Clear,
-            store: Store,
-            format: swapchain.format(),
-            samples: 1,
+let render_pass = Arc::new(
+    vulkano::ordered_passes_renderpass!(device.clone(),
+        attachments: {
+            final_color: {
+                load: Clear,
+                store: Store,
+                format: swapchain.format(),
+                samples: 1,
+            },
+            color: {
+                load: Clear,
+                store: DontCare,
+                format: Format::A2B10G10R10_UNORM_PACK32,
+                samples: 1,
+            },
+            normals: {
+                load: Clear,
+                store: DontCare,
+                format: Format::R16G16B16A16_SFLOAT,
+                samples: 1,
+            },
+            depth: {
+                load: Clear,
+                store: DontCare,
+                format: Format::D16_UNORM,
+                samples: 1,
+            }
         },
-        color: {
-            load: Clear,
-            store: DontCare,
-            format: Format::A2B10G10R10UnormPack32,
-            samples: 1,
-        },
-        normals: {
-            load: Clear,
-            store: DontCare,
-            format: Format::R16G16B16A16Sfloat,
-            samples: 1,
-        },
-        depth: {
-            load: Clear,
-            store: DontCare,
-            format: Format::D16Unorm,
-            samples: 1,
-        }
-    },
-    passes: [
-        {
-            color: [color, normals],
-            depth_stencil: {depth},
-            input: []
-        },
-        {
-            color: [final_color],
-            depth_stencil: {},
-            input: [color, normals]
-        }
-    ]
-).unwrap());
+        passes: [
+            {
+                color: [color, normals],
+                depth_stencil: {depth},
+                input: []
+            },
+            {
+                color: [final_color],
+                depth_stencil: {},
+                input: [color, normals]
+            }
+        ]
+    )
+    .unwrap(),
+);
 ```
 
 Lot to take in here but luckily there isn't much new syntax so we can move through it bit by bit.
@@ -112,11 +115,26 @@ let lighting_pass = Subpass::from(render_pass.clone(), 1).unwrap();
 
 Remember the catch with our `Renderpass` object: it tells Vulkan what to *expect* but it's up to us to create these attachments. We'll do this in the `window_size_dependent_setup` helper method.
 
-We'll add our new attachment declarations next to where we declare our depth attachment.
+We'll add our new attachment near the top of the method
 ```rust
-let color_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::A2B10G10R10UnormPack32).unwrap();
-let normal_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::R16G16B16A16Sfloat).unwrap();
-let depth_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::D16Unorm).unwrap();
+let color_buffer = ImageView::new(
+    AttachmentImage::transient_input_attachment(
+        device.clone(),
+        dimensions,
+        Format::A2B10G10R10_UNORM_PACK32,
+    )
+    .unwrap(),
+)
+.unwrap();
+let normal_buffer = ImageView::new(
+    AttachmentImage::transient_input_attachment(
+        device.clone(),
+        dimensions,
+        Format::R16G16B16A16_SFLOAT,
+    )
+    .unwrap(),
+)
+.unwrap();
 ```
 
 Two things about this:
@@ -126,11 +144,16 @@ Two things about this:
 Now we need to attach our new buffers to the actual `Framebuffer`
 ```rust
 Framebuffer::start(render_pass.clone())
-    .add(image.clone()).unwrap()
-    .add(color_buffer.clone()).unwrap()
-    .add(normal_buffer.clone()).unwrap()
-    .add(depth_buffer.clone()).unwrap()
-    .build().unwrap()
+    .add(view)
+    .unwrap()
+    .add(color_buffer.clone())
+    .unwrap()
+    .add(normal_buffer.clone())
+    .unwrap()
+    .add(depth_buffer.clone())
+    .unwrap()
+    .build()
+    .unwrap(),
 ```
 
 Nothing new here, just mind the order you declare them in. Remember that `image` here corresponds to our `final_color` attachment.
@@ -140,38 +163,49 @@ We're almost done, however, there is one thing that we need to handle before lea
 fn window_size_dependent_setup(
     device: Arc<Device>,
     images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
-    dynamic_state: &mut DynamicState
-) -> (Vec<Arc<dyn FramebufferAbstract + Send + Sync>>, Arc<AttachmentImage>, Arc<AttachmentImage>) {
-    let dimensions = images[0].dimensions();
-
-    let viewport = Viewport {
-        origin: [0.0, 0.0],
-        dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-        depth_range: 0.0 .. 1.0,
-    };
-    dynamic_state.viewports = Some(vec!(viewport));
-
-    let color_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::A2B10G10R10UnormPack32).unwrap();
-    let normal_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::R16G16B16A16Sfloat).unwrap();
-    let depth_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::D16Unorm).unwrap();
-
-    (images.iter().map(|image| {
-        Arc::new(
-            Framebuffer::start(render_pass.clone())
-                .add(image.clone()).unwrap()
-                .add(color_buffer.clone()).unwrap()
-                .add(normal_buffer.clone()).unwrap()
-                .add(depth_buffer.clone()).unwrap()
-                .build().unwrap()
-        ) as Arc<dyn FramebufferAbstract + Send + Sync>
-    }).collect::<Vec<_>>(), color_buffer.clone(), normal_buffer.clone())
+    render_pass: Arc<RenderPass>,
+    viewport: &mut Viewport,
+) -> (
+    Vec<Arc<dyn FramebufferAbstract>>,
+    Arc<ImageView<Arc<AttachmentImage>>>,
+    Arc<ImageView<Arc<AttachmentImage>>>,
+) {
+  // ...
+    (
+        images
+            .iter()
+            .map(|image| {
+                let view = ImageView::new(image.clone()).unwrap();
+                let depth_buffer = ImageView::new(
+                    AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM)
+                        .unwrap(),
+                )
+                .unwrap();
+                Arc::new(
+                    Framebuffer::start(render_pass.clone())
+                        .add(view)
+                        .unwrap()
+                        .add(color_buffer.clone())
+                        .unwrap()
+                        .add(normal_buffer.clone())
+                        .unwrap()
+                        .add(depth_buffer.clone())
+                        .unwrap()
+                        .build()
+                        .unwrap(),
+                ) as Arc<dyn FramebufferAbstract>
+            })
+            .collect::<Vec<_>>(),
+        color_buffer.clone(),
+        normal_buffer.clone(),
+    )
 }
 ```
 
 Now we need to update the two places we call this method.
 ```rust
-let (mut framebuffers, mut color_buffer, mut normal_buffer) = window_size_dependent_setup(device.clone(), &images, render_pass.clone(), &mut dynamic_state);
+let (mut framebuffers, mut color_buffer, mut normal_buffer) =
+    window_size_dependent_setup(device.clone(), &images, render_pass.clone(), &mut viewport);
 ```
 
 ```rust
@@ -185,7 +219,13 @@ if recreate_swapchain {
     mvp.projection = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.01, 100.0);
 
     swapchain = new_swapchain;
-    let (new_framebuffers, new_color_buffer, new_normal_buffer) = window_size_dependent_setup(device.clone(), &new_images, render_pass.clone(), &mut dynamic_state);
+    let (new_framebuffers, new_color_buffer, new_normal_buffer) =
+        window_size_dependent_setup(
+            device.clone(),
+            &new_images,
+            render_pass.clone(),
+            &mut viewport,
+        );
     framebuffers = new_framebuffers;
     color_buffer = new_color_buffer;
     normal_buffer = new_normal_buffer;
@@ -237,7 +277,7 @@ We won't talk about the contents of our shaders until a later section, but we ne
 But now let's look at the pipeline for the first sub-pass.
 ```rust
 let deferred_pipeline = Arc::new(GraphicsPipeline::start()
-    .vertex_input_single_buffer()
+    .vertex_input_single_buffer::<Vertex>()
     .vertex_shader(deferred_vert.main_entry_point(), ())
     .triangle_list()
     .viewports_dynamic_scissors_irrelevant(1)
@@ -270,21 +310,37 @@ Our second pipeline is almost identical to the first. The only real change is th
 
 First, for the sake of our initial example, let's comment out our `ambient_uniform_subbuffer` and `directional_uniform_subbuffer` variables and only use our main `uniform_buffer_subbuffer`.
 ```rust
-let deferred_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
-let deferred_set = Arc::new(PersistentDescriptorSet::start(deferred_layout.clone())
-    .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
-    .build().unwrap());
+let deferred_layout = deferred_pipeline
+    .layout()
+    .descriptor_set_layouts()
+    .get(0)
+    .unwrap();
+let mut deferred_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
+deferred_set_builder
+    .add_buffer(uniform_buffer_subbuffer.clone())
+    .unwrap();
+let deferred_set = Arc::new(deferred_set_builder.build().unwrap());
 ```
 Nothing too notable here since we've seen this exact code in earlier lessons. However, notice that we specify the pipeline we're using. Uniform sets need to be attached to the correct pipeline to work.
 
 The second set is also simple but it does show off another important new wrinkle in how Vulkan works.
 ```rust
-let lighting_layout = lighting_pipeline.descriptor_set_layout(0).unwrap();
-let lighting_set = Arc::new(PersistentDescriptorSet::start(lighting_layout.clone())
-    .add_image(color_buffer.clone()).unwrap()
-    .add_image(normal_buffer.clone()).unwrap()
-    .add_buffer(uniform_buffer_subbuffer).unwrap()
-    .build().unwrap());
+let lighting_layout = lighting_pipeline
+    .layout()
+    .descriptor_set_layouts()
+    .get(0)
+    .unwrap();
+let mut lighting_set_builder = PersistentDescriptorSet::start(lighting_layout.clone());
+lighting_set_builder
+    .add_image(color_buffer.clone())
+    .unwrap();
+lighting_set_builder
+    .add_image(normal_buffer.clone())
+    .unwrap();
+lighting_set_builder
+    .add_buffer(uniform_buffer_subbuffer)
+    .unwrap();
+let lighting_set = Arc::new(lighting_set_builder.build().unwrap());
 ```
 As you can see, renderpass attachments which are used as inputs to a sub-pass are given to that sub-pass as a uniform set. The order we add these attachment images to our descriptor set *does* matter, but not in the way you might expect. In the section on shaders we'll see how this looks on the consumer's side and revisit the topic of order.
 
@@ -298,23 +354,43 @@ In this case we just use black for our new attachments.
 
 The new set of render commands we want to look at are these:
 ```rust
-.begin_render_pass(framebuffers[image_num].clone(), SubpassContents::Inline, clear_values)
+.begin_render_pass(
+    framebuffers[image_num].clone(),
+    SubpassContents::Inline,
+    clear_values,
+)
 .unwrap()
-.draw(deferred_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), deferred_set.clone(), (), vec![])
+.set_viewport(0, [viewport.clone()])
+.bind_pipeline_graphics(deferred_pipeline.clone())
+.bind_descriptor_sets(
+    PipelineBindPoint::Graphics,
+    deferred_pipeline.layout().clone(),
+    0,
+    deferred_set.clone(),
+)
+.bind_vertex_buffers(0, vertex_buffer.clone())
+.draw(vertex_buffer.len() as u32, 1, 0, 0)
 .unwrap()
 .next_subpass(SubpassContents::Inline)
 .unwrap()
-.draw(lighting_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), lighting_set.clone(), (), vec![])
+.bind_pipeline_graphics(lighting_pipeline.clone())
+.bind_descriptor_sets(
+    PipelineBindPoint::Graphics,
+    lighting_pipeline.layout().clone(),
+    0,
+    lighting_set.clone(),
+)
+.draw(vertex_buffer.len() as u32, 1, 0, 0)
 .unwrap()
 .end_render_pass()
-.unwrap()
+.unwrap();
 ```
 
 Our first `.draw()` call is pretty much the same as our last lesson aside from the change to the variable names.
 
 The first important thing to notice is the `.next_subpass()` call. As mentioned earlier, we can actually draw using the same sub-pass multiple times. Because of that, we need to tell Vulkan directly when we want to move from one sub-pass to another.
 
-The second call to `.draw()` looks the same as our first and that's actually a little strange. We give it our second sub-pass' pipeline and uniform sets but we *also* give it the same vertex information as the first sub-pass. This is odd because our second sub-pass doesn't have anything to do with the geometry of the scene or the MVP matrix, so why do we have it? That's down to an oddity of the current Vulkano crate. We can't call `.draw()` without some vertex information. The reason for that boils down to how shaders work. We want our lighting fragment shader to draw on our cube, but the fragement shader is only run on pixels covered by something rendered in the vertex shader. This is something we'll look into in a later lesson. For now, we'll just re-use the cube's vertex buffer for the sake of simplicity.
+Next you'll see we have a repeat of the `bind_` calls, only in this case we're now passing the bindings for the lighting sub-pass. This makes sense, but note that we *also* give it the same vertex information as the first sub-pass. This is odd because our second sub-pass doesn't have anything to do with the geometry of the scene or the MVP matrix, so why do we have it? That's down to an oddity of the current Vulkano crate. We can't call `.draw()` without some vertex information. The reason for that boils down to how shaders work. We want our lighting fragment shader to draw on our cube, but the fragment shader is only run on pixels covered by something rendered in the vertex shader. This is something we'll look into in a later lesson. For now, we'll just re-use the cube's vertex buffer for the sake of simplicity.
 
 ## Shaders Pt. 1: A Step Back
 
@@ -464,14 +540,23 @@ Since we can't just use our input uniforms as a regular variable, we need to use
 
 Let's add back in the sub-buffers we commented out earlier in the lesson.
 ```rust
-let lighting_layout = lighting_pipeline.descriptor_set_layout(0).unwrap();
-let lighting_set = Arc::new(PersistentDescriptorSet::start(lighting_layout.clone())
-    .add_image(color_buffer.clone()).unwrap()
-    .add_image(normal_buffer.clone()).unwrap()
-    .add_buffer(uniform_buffer_subbuffer).unwrap()
-    .add_buffer(ambient_uniform_subbuffer).unwrap()
-    .add_buffer(directional_uniform_subbuffer).unwrap()
-    .build().unwrap());
+let mut lighting_set_builder = PersistentDescriptorSet::start(lighting_layout.clone());
+lighting_set_builder
+    .add_image(color_buffer.clone())
+    .unwrap();
+lighting_set_builder
+    .add_image(normal_buffer.clone())
+    .unwrap();
+lighting_set_builder
+    .add_buffer(uniform_buffer_subbuffer)
+    .unwrap();
+lighting_set_builder
+    .add_buffer(ambient_uniform_subbuffer)
+    .unwrap();
+lighting_set_builder
+    .add_buffer(directional_uniform_subbuffer)
+    .unwrap();
+let lighting_set = Arc::new(lighting_set_builder.build().unwrap());
 ```
 
 #### Running the Code
@@ -572,4 +657,4 @@ When we ran our second pass we took the two attachments on the left as an input.
 
 This is a trivial example compared to what's possible, but this basic process will be the key to everything we do from now on.
 
-[lesson source code](../lessons/7.%20Deferred%20Rendering)
+[lesson source code](https://github.com/taidaesal/vulkano_tutorial/tree/gh-pages/lessons/7.%20Deferred%20Rendering)

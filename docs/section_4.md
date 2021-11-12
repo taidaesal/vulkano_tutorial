@@ -43,7 +43,7 @@ let render_pass = Arc::new(vulkano::single_pass_renderpass!(
         depth: {
             load: Clear,
             store: DontCare,
-            format: Format::D16Unorm,
+            format: Format::D16_UNORM,
             samples: 1,
         }
     },
@@ -64,7 +64,7 @@ Our render pass tells Vulkan *what* is available but to tell Vulkan *how to use 
 
 ```rust
 let pipeline = Arc::new(GraphicsPipeline::start()
-    .vertex_input_single_buffer()
+    .vertex_input_single_buffer::<Vertex>()
     .vertex_shader(vs.main_entry_point(), ())
     .triangle_list()
     .viewports_dynamic_scissors_irrelevant(1)
@@ -82,16 +82,26 @@ our only new line is `.depth_stencil_simple_depth()` and it instructs Vulkan to 
 We have a new framebuffer attachment declared in our renderpass so we need to make sure to add it to our framebuffer declarations as well.
 
 ```rust
-let depth_buffer = AttachmentImage::transient(device.clone(), dimensions, Format::D16Unorm).unwrap();
+let depth_buffer = ImageView::new(
+    AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
+)
+.unwrap();
 
-images.iter().map(|image| {
-    Arc::new(
-        Framebuffer::start(render_pass.clone())
-            .add(image.clone()).unwrap()
-            .add(depth_buffer.clone()).unwrap()
-            .build().unwrap()
-    ) as Arc<dyn FramebufferAbstract + Send + Sync>
-}).collect::<Vec<_>>()
+images
+    .iter()
+    .map(|image| {
+        let view = ImageView::new(image.clone()).unwrap();
+        Arc::new(
+            Framebuffer::start(render_pass.clone())
+                .add(view)
+                .unwrap()
+                .add(depth_buffer.clone())
+                .unwrap()
+                .build()
+                .unwrap(),
+        ) as Arc<dyn FramebufferAbstract>
+    })
+    .collect::<Vec<_>>()
 ```
 
 Our call to `AttachmentImage::transient` is how we create the actual buffer that will be used in the framebuffer attachment. Since we don't care what happens to it once we're done, it can be a transient image.
@@ -102,9 +112,9 @@ Also, since this is being taken care of in our `window_size_dependent_setup` hel
 fn window_size_dependent_setup(
     device: Arc<Device>,
     images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
-    dynamic_state: &mut DynamicState
-) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
+    render_pass: Arc<RenderPass>,
+    viewport: &mut Viewport,
+) -> Vec<Arc<dyn FramebufferAbstract>> {
     // ....
 }
 ```
@@ -131,4 +141,4 @@ Not the most exciting image, I know, but now that we have depth sorted out we ar
 
 In this lesson you also got your first taste of using multiple attachments, something which will be very useful in future lessons.
 
-[lesson source code](../lessons/4.%20Depth)
+[lesson source code](https://github.com/taidaesal/vulkano_tutorial/tree/gh-pages/lessons/4.%20Depth)

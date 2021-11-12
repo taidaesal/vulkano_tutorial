@@ -70,7 +70,7 @@ From the example here you can see that our main program loop will still handle c
 
 ## Part 1: Back to Basics
 
-Quick, what is the first thing you need to do in any Vulkan program? That's right: wade through more initialisation than you can handle!
+Quick, what is the first thing you need to do in any Vulkan program? That's right: wade through more initialization than you can handle!
 
 Where we take care of this tedious but necessary task is suddenly an open question. Do we want to have our render system entirely encapsulate the Vulkan portions of our application, or do we want to do at least some of the initial setup in our main application? The answer can depend on exactly what we want out of our system. Do we want something that we can import into other projects as a plug-and-play solution to rendering things or are we fine with something that's more tightly coupled with the host application?
 
@@ -84,7 +84,6 @@ Let's move our rendering system into its own module. Shaders should go in as a s
 
 ```
 src/
-    models/
     obj_loader/
     system/
         shaders/
@@ -145,7 +144,7 @@ impl System {
     pub fn new() -> System {
         let instance = {
             let extensions = vulkano_win::required_extensions();
-            Instance::new(None, &extensions, None).unwrap()
+            Instance::new(None, Version::V1_1, &extensions, None).unwrap()
         };
 
         System{
@@ -176,7 +175,7 @@ impl System {
     pub fn new() -> System {
         let instance = {
             let extensions = vulkano_win::required_extensions();
-            Instance::new(None, &extensions, None).unwrap()
+            Instance::new(None, Version::V1_1, &extensions, None).unwrap()
         };
 
         let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
@@ -188,7 +187,7 @@ impl System {
 }
 ```
 
-We don't need to store `physical` because we won't be using outside of this initialisation process.
+We don't need to store `physical` because we won't be using outside of this initialization process.
 
 #### Our Window
 
@@ -229,7 +228,7 @@ impl System {
     pub fn new(event_loop: &EventLoop) -> System {
         let instance = {
             let extensions = vulkano_win::required_extensions();
-            Instance::new(None, &extensions, None).unwrap()
+            Instance::new(None, Version::V1_1, &extensions, None).unwrap()
         };
 
         let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
@@ -274,7 +273,7 @@ impl System {
 }
 ```
 
-We need to know `device` and `queue` later in the rendering process, but the other variables are safe to allow to go out of scope once initialisation is done.
+We need to know `device` and `queue` later in the rendering process, but the other variables are safe to allow to go out of scope once initialization is done.
 
 #### Swapchain
 
@@ -334,9 +333,15 @@ impl System {
             let format = caps.supported_formats[0].0;
             let dimensions: [u32; 2] = surface.window().inner_size().into();
 
-            Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
-                           dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
-                           PresentMode::Fifo, FullscreenExclusive::Default, true, ColorSpace::SrgbNonLinear).unwrap()
+            Swapchain::start(device.clone(), surface.clone())
+                .num_images(caps.min_image_count)
+                .format(format)
+                .dimensions(dimensions)
+                .usage(usage)
+                .sharing_mode(&queue)
+                .composite_alpha(alpha)
+                .build()
+                .unwrap()
         };
 
         System{
@@ -466,7 +471,7 @@ Storing our renderpass object is fairly simple but we will not be storing our su
 ```rust
 pub struct System {
     // ...
-    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
+    render_pass: Arc<RenderPass>,
 }
 
 impl System {
@@ -484,19 +489,19 @@ impl System {
                 color: {
                     load: Clear,
                     store: DontCare,
-                    format: Format::A2B10G10R10UnormPack32,
+                    format: Format::A2B10G10R10_UNORM_PACK32,
                     samples: 1,
                 },
                 normals: {
                     load: Clear,
                     store: DontCare,
-                    format: Format::R16G16B16A16Sfloat,
+                    format: Format::R16G16B16A16_SFLOAT,
                     samples: 1,
                 },
                 depth: {
                     load: Clear,
                     store: DontCare,
-                    format: Format::D16Unorm,
+                    format: Format::D16_UNORM,
                     samples: 1,
                 }
             },
@@ -538,9 +543,9 @@ vulkano::impl_vertex!(NormalVertex, position, normal, color);
 
 pub struct System {
     // ...
-    deferred_pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-    directional_pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-    ambient_pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+    deferred_pipeline: Arc<GraphicsPipeline>,
+    directional_pipeline: Arc<GraphicsPipeline>,
+    ambient_pipeline: Arc<GraphicsPipeline>,
 }
 
 impl System {
@@ -629,10 +634,10 @@ We're almost done, time to just wrap up with a few bits and pieces that don't re
 pub struct System {
     // ...
     dummy_verts: Arc<CpuAccessibleBuffer<[DummyVertex]>>,
-    dynamic_state: DynamicState,
-    framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
-    color_buffer: Arc<AttachmentImage>,
-    normal_buffer: Arc<AttachmentImage>,
+    viewport: Viewport,
+    framebuffers: Vec<Arc<dyn FramebufferAbstract>>,
+    color_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
+    normal_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
     previous_frame_end: Box<dyn GpuFuture>,
     vp_set: Arc<dyn DescriptorSet + Send + Sync>,
 }
@@ -648,19 +653,33 @@ impl System {
             DummyVertex::list().iter().cloned()
         ).unwrap();
 
-        let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None, compare_mask: None, write_mask: None, reference: None };
+        let mut viewport = Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [0.0, 0.0],
+            depth_range: 0.0..1.0,
+        };
 
-        let (framebuffers, color_buffer, normal_buffer) = System::window_size_dependent_setup(device.clone(), &images, render_pass.clone(), &mut dynamic_state);
+        let (framebuffers, color_buffer, normal_buffer) = System::window_size_dependent_setup(
+            device.clone(),
+            &images,
+            render_pass.clone(),
+            &mut viewport,
+        );
 
-        let vp_layout = deferred_pipeline.descriptor_set_layout(0).unwrap();
-        let vp_set = Arc::new(PersistentDescriptorSet::start(vp_layout.clone())
-            .add_buffer(vp_buffer.clone()).unwrap()
-            .build().unwrap());
+        let vp_layout = deferred_pipeline
+            .layout()
+            .descriptor_set_layouts()
+            .get(0)
+            .unwrap();
+        let mut vp_set_builder = PersistentDescriptorSet::start(vp_layout.clone());
+        vp_set_builder.add_buffer(vp_buffer.clone()).unwrap();
+        let vp_set = Arc::new(vp_set_builder.build().unwrap());
+
 
         System{
             // ...
             dummy_verts,
-            dynamic_state,
+            viewport,
             framebuffers,
             color_buffer,
             normal_buffer,
@@ -671,32 +690,63 @@ impl System {
     fn window_size_dependent_setup(
         device: Arc<Device>,
         images: &[Arc<SwapchainImage<Window>>],
-        render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
-        dynamic_state: &mut DynamicState
-    ) -> (Vec<Arc<dyn FramebufferAbstract + Send + Sync>>, Arc<AttachmentImage>, Arc<AttachmentImage>) {
+        render_pass: Arc<RenderPass>,
+        viewport: &mut Viewport,
+    ) -> (
+        Vec<Arc<dyn FramebufferAbstract>>,
+        Arc<ImageView<Arc<AttachmentImage>>>,
+        Arc<ImageView<Arc<AttachmentImage>>>,
+    ) {
         let dimensions = images[0].dimensions();
+        viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-            depth_range: 0.0 .. 1.0,
-        };
-        dynamic_state.viewports = Some(vec!(viewport));
+        let color_buffer = ImageView::new(
+            AttachmentImage::transient_input_attachment(
+                device.clone(),
+                dimensions,
+                Format::A2B10G10R10_UNORM_PACK32,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let normal_buffer = ImageView::new(
+            AttachmentImage::transient_input_attachment(
+                device.clone(),
+                dimensions,
+                Format::R16G16B16A16_SFLOAT,
+            )
+            .unwrap(),
+        )
+        .unwrap();
 
-        let color_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::A2B10G10R10UnormPack32).unwrap();
-        let normal_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::R16G16B16A16Sfloat).unwrap();
-        let depth_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::D16Unorm).unwrap();
-
-        (images.iter().map(|image| {
-            Arc::new(
-                Framebuffer::start(render_pass.clone())
-                    .add(image.clone()).unwrap()
-                    .add(color_buffer.clone()).unwrap()
-                    .add(normal_buffer.clone()).unwrap()
-                    .add(depth_buffer.clone()).unwrap()
-                    .build().unwrap()
-            ) as Arc<dyn FramebufferAbstract + Send + Sync>
-        }).collect::<Vec<_>>(), color_buffer.clone(), normal_buffer.clone())
+        (
+            images
+                .iter()
+                .map(|image| {
+                    let view = ImageView::new(image.clone()).unwrap();
+                    let depth_buffer = ImageView::new(
+                        AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM)
+                            .unwrap(),
+                    )
+                    .unwrap();
+                    Arc::new(
+                        Framebuffer::start(render_pass.clone())
+                            .add(view)
+                            .unwrap()
+                            .add(color_buffer.clone())
+                            .unwrap()
+                            .add(normal_buffer.clone())
+                            .unwrap()
+                            .add(depth_buffer.clone())
+                            .unwrap()
+                            .build()
+                            .unwrap(),
+                    ) as Arc<dyn FramebufferAbstract>
+                })
+                .collect::<Vec<_>>(),
+            color_buffer.clone(),
+            normal_buffer.clone(),
+        )
     }
 
     pub fn set_view(&mut self, view: &TMat4<f32>) {
@@ -711,21 +761,20 @@ impl System {
             }
         ).unwrap();
 
-        let vp_layout = self.deferred_pipeline.descriptor_set_layout(0).unwrap();
-        let self.vp_set = Arc::new(PersistentDescriptorSet::start(vp_layout.clone())
-            .add_buffer(self.vp_buffer.clone()).unwrap()
-            .build().unwrap());
+        let vp_layout = self
+            .deferred_pipeline
+            .layout()
+            .descriptor_set_layouts()
+            .get(0)
+            .unwrap();
+        let mut vp_set_builder = PersistentDescriptorSet::start(vp_layout.clone());
+        vp_set_builder.add_buffer(self.vp_buffer.clone()).unwrap();
+        self.vp_set = Arc::new(vp_set_builder.build().unwrap());
 
         self.render_stage = RenderStage::Stopped;
     }
 }
 ```
-
-A quick note on what's going on with `vp_set` as it has the odd type of `Arc<dyn DescriptorSet + Send + Sync>`. If you tried to use just `Arc<dyn DescriptorSet>` it would work for now, however, we would run into problems later. The reason for this is limitations in something called _type inference_.
-
-Rust has a very powerful [type inference](https://doc.rust-lang.org/rust-by-example/types/inference.html) system where it can automatically detect (or _infer_) the data types of our variables. However, there are cases where the automatic systems reach their limit and we have to manually tell Rust what type something has. We'll look at what this means in more detail when we actually use `vp_set`, but the key idea to take away right now is that `Arc<dyn DescriptorSet + Send + Sync>` is _not_ the same thing as `Arc<dyn DescriptorSet>` even if the data we store in the variable also implements the `Send + Sync` traits.
-
-This is, in my opinion, one of the friction points in learning Rust that lingers even after you've mastered other challenges like the Borrow Checker. The errors put out by the compiler are much less helpful in this case than they usually are because the types involved are often complex and hard to read. Like with borrowing, however, this is definitely something you _can_ overcome. Just take things one step at a time and don't let yourself feel intimidated.  
 
 #### Running the Code
 
@@ -778,7 +827,12 @@ Now let's create the method we can call to start a single render operation. The 
 
 pub struct System {
     // ...
-    commands: Option<AutoCommandBufferBuilder>,
+    commands: Option<
+        AutoCommandBufferBuilder<
+            PrimaryAutoCommandBuffer<StandardCommandPoolAlloc>,
+            StandardCommandPoolBuilder,
+        >,
+    >,
     img_index: usize,
     acquire_future: Option<SwapchainAcquireFuture<Window>>,
 }
@@ -815,9 +869,18 @@ impl System {
 
         let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), 1f32.into()];
 
-        let mut commands = AutoCommandBufferBuilder::primary_one_time_submit(self.device.clone(), self.queue.family()).unwrap();
+        let mut commands = AutoCommandBufferBuilder::primary(
+            self.device.clone(),
+            self.queue.family(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
         commands
-            .begin_render_pass(self.framebuffers[img_index].clone(), SubpassContents::Inline, clear_values)
+            .begin_render_pass(
+                self.framebuffers[img_index].clone(),
+                SubpassContents::Inline,
+                clear_values,
+            )
             .unwrap();
         self.commands = Some(commands);
 
@@ -886,12 +949,8 @@ impl System {
         }
 
         let mut commands = self.commands.take().unwrap();
-        commands
-            .end_render_pass()
-            .unwrap();
-        let command_buffer = commands
-            .build()
-            .unwrap();
+        commands.end_render_pass().unwrap();
+        let command_buffer = commands.build().unwrap();
 
         let af = self.acquire_future.take().unwrap();
 
@@ -994,11 +1053,17 @@ impl System {
             self.model_uniform_buffer.next(uniform_data).unwrap()
         };
 
-        let deferred_layout = self.deferred_pipeline.descriptor_set_layout(1).unwrap();
-        let model_set:Arc<dyn DescriptorSet + Send + Sync> = Arc::new(
-            PersistentDescriptorSet::start(deferred_layout.clone())
-                .add_buffer(model_uniform_subbuffer.clone()).unwrap()
-                .build().unwrap());
+        let deferred_layout_model = self
+            .deferred_pipeline
+            .layout()
+            .descriptor_set_layouts()
+            .get(1)
+            .unwrap();
+        let mut model_set_builder = PersistentDescriptorSet::start(deferred_layout_model.clone());
+        model_set_builder
+            .add_buffer(model_uniform_subbuffer.clone())
+            .unwrap();
+        let model_set = Arc::new(model_set_builder.build().unwrap());
 
         let vertex_buffer:Arc<dyn BufferAccess + Send + Sync> = CpuAccessibleBuffer::from_iter(
             self.device.clone(),
@@ -1008,13 +1073,16 @@ impl System {
 
         let mut commands = self.commands.take().unwrap();
         commands
-            .draw(self.deferred_pipeline.clone(),
-                  &self.dynamic_state,
-                  vec![vertex_buffer.clone()],
-                  vec![self.vp_set.clone(), model_set.clone()],
-                  (),
-                  vec![]
+            .set_viewport(0, [self.viewport.clone()])
+            .bind_pipeline_graphics(self.deferred_pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.deferred_pipeline.layout().clone(),
+                0,
+                (self.vp_set.clone(), model_set.clone()),
             )
+            .bind_vertex_buffers(0, vertex_buffer.clone())
+            .draw(vertex_buffer.len() as u32, 1, 0, 0)
             .unwrap();
         self.commands = Some(commands);
     }
@@ -1024,28 +1092,6 @@ impl System {
 For the most part this looks like the code we had in previous lessons, just updated to use `self.` for fields like `device` or `deferred_pipeline` but what's going on with our use of `self.commands`?
 
 The first thing you can see is that we use `.take()` as discussed in the last section. Remember also that we need to re-assign our command buffer to `self.commands` because calling `.take()` changes the value stored in `self.commands` to `None`. If we forget to re-assign the data we'll lose all our changes!
-
-The second thing you might notice is that our `.draw()` command has sprouted two `vec![]` invocations even though our input is exactly the same as it was in our previous lessons. This seems a bit strange on first glance but it makes more sense when you consider the limits of Rust's *type inference* like we discussed earlier, particularly those limits when faced with the complex data types inside a complex API like Vulkano.
-
-What does "complex data type" mean in practice? Let's take a look at how `.draw()` is actually defined inside Vulkano:
-```rust
-pub fn draw<V, Gp, S, Pc>(
-    self,
-    pipeline: Gp,
-    dynamic: &DynamicState,
-    vertex_buffer: V,
-    sets: S,
-    constants: Pc
-) -> Result<Self, DrawError> where
-    Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone,
-    S: DescriptorSetsCollection
-```
-
-That's... a lot to take in if you're unfamiliar with Rust's system of [Generic Types](https://doc.rust-lang.org/book/ch10-01-syntax.html) but let's focus only on `sets`. You see that `sets` needs to be of type `S` which is further defined as a `DescriptorSetsCollection`. If we look at the Vulkano documentation we'll find that `DescriptorSetsCollection` is just a trait type without a concrete definition. This means that you can't just do something like `let my_sets = DescriptorSetsCollection::new(...)`. However, further down the documentation page we see that we *can* read vectors as an instance of `DescriptorSetsCollection`.
-
-The actual declaration of this is `impl<T> DescriptorSetsCollection for Vec<T> where T: DescriptorSet + Send + Sync + 'static`. If this seems familiar it's because this is the same data type (minus the `'static` lifetime specifier) that we gave `vp_set`. This lets Rust automatically go from our `Vec<DescriptorSet + Send + Sync>` to a `DescriptorSetsCollection` without further work on our part.
-
-This is, no doubt, deeply fascinating, but why now? After all, we've used this data before without having to manually specify the type. The reason is because where we declare the variables and where we use them are split between scopes. Before we declared our sets in the same scope we used them in, so Rust was able to reason about them as a "package" so to speak. However, now we're using variables that we declare in our `struct` definition. So by the time Rust gets to this method, where we actually use it, all Rust has to go by is the data type *we* gave it. Because of these reasons, we need to be extremely specific when declaring the variables.
 
 #### Ambient Light
 
@@ -1109,31 +1155,41 @@ impl System {
     pub fn ambient(&mut self) {
         // ...
 
-        let ambient_layout = self.ambient_pipeline.descriptor_set_layout(0).unwrap();
-        let ambient_set = Arc::new(PersistentDescriptorSet::start(ambient_layout.clone())
-            .add_image(self.color_buffer.clone()).unwrap()
-            .add_image(self.normal_buffer.clone()).unwrap()
-            .add_buffer(self.ambient_buffer.clone()).unwrap()
-            .build().unwrap());
+        let ambient_layout = self
+            .ambient_pipeline
+            .layout()
+            .descriptor_set_layouts()
+            .get(0)
+            .unwrap();
+        let mut ambient_set_builder = PersistentDescriptorSet::start(ambient_layout.clone());
+        ambient_set_builder
+            .add_image(self.color_buffer.clone())
+            .unwrap()
+            .add_image(self.normal_buffer.clone())
+            .unwrap()
+            .add_buffer(self.ambient_buffer.clone())
+            .unwrap();
+        let ambient_set = Arc::new(ambient_set_builder.build().unwrap());
 
         let mut commands = self.commands.take().unwrap();
         commands
-            .next_subpass(false)
+            .next_subpass(SubpassContents::Inline)
             .unwrap()
-            .draw(self.ambient_pipeline.clone(),
-                  &self.dynamic_state,
-                  vec![self.dummy_verts.clone()],
-                  ambient_set.clone(),
-                  (), 
-                  vec![]
+            .bind_pipeline_graphics(self.ambient_pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.ambient_pipeline.layout().clone(),
+                0,
+                ambient_set.clone(),
             )
+            .set_viewport(0, [self.viewport.clone()])
+            .bind_vertex_buffers(0, self.dummy_verts.clone())
+            .draw(self.dummy_verts.len() as u32, 1, 0, 0)
             .unwrap();
         self.commands = Some(commands);
     }
 }
 ```
-
-The actual drawing part is pretty short and to the point. We see `vec!` make another appearance for our dummy verts but we don't need a second `vec!` around our sets since we only have one this time and it's declared in the same scope we use it. The thing I want to draw attention to is the way we call `.next_subpass`.
 
 Remember that, although we have three sets of shaders, we only actually have two render sub-passes. Because of that, we need to call `.next_subpass` a single time only and we must do so the first time we use either of the shader sets that operate on the second sub-pass. We could write a check for this condition that gets executed whenever we want to invoke our ambient or directional lighting shaders, but that adds complexity as well as additional opportunities for bugs to creep in. By making the order we call the lighting shaders mandatory we can do away with this extra code while making sure that our command buffer doesn't produce an incorrect state.
 
@@ -1166,31 +1222,42 @@ impl System {
 
         let directional_uniform_subbuffer = self.generate_directional_buffer(&self.directional_buffer, &directional_light);
 
-        let directional_layout = self.directional_pipeline.descriptor_set_layout(0).unwrap();
-        let directional_set = Arc::new(PersistentDescriptorSet::start(directional_layout.clone())
-            PersistentDescriptorSet::start(self.directional_pipeline.clone(), 0)
-            .add_image(self.color_buffer.clone()).unwrap()
-            .add_image(self.normal_buffer.clone()).unwrap()
-            .add_buffer(directional_uniform_subbuffer.clone()).unwrap()
-            .build().unwrap());
+        let directional_layout = self
+            .directional_pipeline
+            .layout()
+            .descriptor_set_layouts()
+            .get(0)
+            .unwrap();
+        let mut directional_set_builder =
+            PersistentDescriptorSet::start(directional_layout.clone());
+        directional_set_builder
+            .add_image(self.color_buffer.clone())
+            .unwrap()
+            .add_image(self.normal_buffer.clone())
+            .unwrap()
+            .add_buffer(directional_uniform_subbuffer.clone())
+            .unwrap();
+        let directional_set = Arc::new(directional_set_builder.build().unwrap());
 
         let mut commands = self.commands.take().unwrap();
         commands
-            .draw(
-                self.directional_pipeline.clone(),
-                &self.dynamic_state,
-                vec![self.dummy_verts.clone()],
+            .set_viewport(0, [self.viewport.clone()])
+            .bind_pipeline_graphics(self.directional_pipeline.clone())
+            .bind_vertex_buffers(0, self.dummy_verts.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.directional_pipeline.layout().clone(),
+                0,
                 directional_set.clone(),
-                (), 
-                vec![]
             )
+            .draw(self.dummy_verts.len() as u32, 1, 0, 0)
             .unwrap();
         self.commands = Some(commands);
     }
 }
 ```
 
-As before, we create our uniform set in the same method where we use it and there's only one such set, so we don't need to wrap it in a `vec!`. Because we've made sure to take care of switching render passes in our ambient method we can just go ahead and assume that we're in the correct sub-pass for now.
+Because we've made sure to take care of switching render passes in our ambient method we can just go ahead and assume that we're in the correct sub-pass for now.
 
 #### Using Our System
 
@@ -1204,7 +1271,7 @@ fn main() {
 
     let mut previous_frame_end:Box<dyn GpuFuture> = Box::new(sync::now(system.device.clone()));
 
-    let mut teapot = Model::new("./src/models/teapot.obj").build();
+    let mut teapot = Model::new("data/models/teapot.obj").build();
     teapot.translate(vec3(0.0, 0.0, -3.5));
 
     system.set_view(&look_at(&vec3(0.0, 0.0, 0.01), &vec3(0.0, 0.0, 0.0), &vec3(0.0, -1.0, 0.0)));
@@ -1258,13 +1325,13 @@ fn main() {
 
     let mut previous_frame_end = Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
 
-    let mut teapot = Model::new("./src/models/teapot.obj").build();
+    let mut teapot = Model::new("data/models/teapot.obj").build();
     teapot.translate(vec3(-5.0, 2.0, -5.0));
 
-    let mut suzanne = Model::new("./src/models/suzanne.obj").build();
+    let mut suzanne = Model::new("data/models/suzanne.obj").build();
     suzanne.translate(vec3(5.0, 2.0, -5.0));
 
-    let mut torus = Model::new("./src/models/torus.obj").build();
+    let mut torus = Model::new("data/models/torus.obj").build();
     torus.translate(vec3(0.0, -2.0, -5.0));
 
     let directional_light_r = DirectionalLight::new([-4.0, -4.0, 0.0, -2.0], [1.0, 0.0, 0.0]);
@@ -1326,6 +1393,6 @@ Play around a bit on your own. Before we'd have to manually code in a new model 
 
 #### What Next?
 
-At this point, we've learned most of the "big picture" Vulkan ideas that you need to program in Vulkan effectively. This isn't to say that we've mastered Vulkan; far from it! Rather, by now we've learned to "think in Vulkan" to an extent. Creating swapchains, multi-stage pipelines, shaders, etc are things that are going to be at the core of any Vulkan workflow you might run into in the future. Our task for the rest of the tutorial series is to get better with the tools we've learned thus far and explore how they can be used to produce ever-more-complicated scenes.
+At this point, we've learned most of the "big picture" Vulkan ideas that you need to program in Vulkan effectively. This isn't to say that we've mastered Vulkan; far from it! Rather, by now we've learned to "think in Vulkan" to an extent. Creating swapchains, multi-stage pipelines, shaders, etc. are things that are going to be at the core of any Vulkan workflow you might run into in the future. Our task for the rest of the tutorial series is to get better with the tools we've learned thus far and explore how they can be used to produce ever-more-complicated scenes.
 
-[lesson source code](../lessons/11.%20First%20Rendering%20System)
+[lesson source code](https://github.com/taidaesal/vulkano_tutorial/tree/gh-pages/lessons/11.%20First%20Rendering%20System)
