@@ -711,7 +711,7 @@ fn main() {
 
             let mut directional_uniform_subbuffer =
                 generate_directional_buffer(&directional_buffer, &directional_light_r);
-                
+
             let directional_layout = directional_pipeline
                 .layout()
                 .descriptor_set_layouts()

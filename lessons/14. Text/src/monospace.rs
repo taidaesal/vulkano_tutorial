@@ -1,3 +1,7 @@
+// Copyright (c) 2021 taidaesal
+// Licensed under the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>
+
 use png;
 
 use std::io::Cursor;
@@ -12,20 +16,23 @@ impl Monospace {
         let png_bytes = include_bytes!("./textures/texture_small.png").to_vec();
         let cursor = Cursor::new(png_bytes);
         let decoder = png::Decoder::new(cursor);
-        let (info, mut reader) = decoder.read_info().unwrap();
+        let mut reader = decoder.read_info().unwrap();
+        let info = reader.info();
+        let width = info.width;
+        let height = info.height;
         let mut image_data = Vec::new();
         let depth: u32 = match info.bit_depth {
             png::BitDepth::One => 1,
             png::BitDepth::Two => 2,
             png::BitDepth::Four => 4,
             png::BitDepth::Eight => 8,
-            png::BitDepth::Sixteen => 16
+            png::BitDepth::Sixteen => 16,
         };
-        image_data.resize((info.width * info.height * depth) as usize, 0);
+        image_data.resize((width * height * depth) as usize, 0);
         reader.next_frame(&mut image_data).unwrap();
 
         Monospace {
-            input_width: info.width as usize,
+            input_width: width as usize,
             texture_data: image_data,
         }
     }
@@ -48,7 +55,8 @@ impl Monospace {
                     let source_col_offset = (source_index + col) * 4;
                     let target_col_offset = (target_index + col) * 4;
                     for ii in 0..4 {
-                        ret[target_row_offset + target_col_offset + ii] = self.texture_data[source_row_offset + source_col_offset + ii];
+                        ret[target_row_offset + target_col_offset + ii] =
+                            self.texture_data[source_row_offset + source_col_offset + ii];
                     }
                 }
             }

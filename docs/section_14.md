@@ -52,7 +52,13 @@ let (texture, tex_future) = {
     let png_bytes = include_bytes!("./textures/texture_small.png").to_vec();
     let cursor = Cursor::new(png_bytes);
     let decoder = png::Decoder::new(cursor);
-    let (info, mut reader) = decoder.read_info().unwrap();
+    let mut reader = decoder.read_info().unwrap();
+    let info = reader.info();
+    let dimensions = ImageDimensions::Dim2d {
+        width: info.width,
+        height: info.height,
+        array_layers: 1,
+    };
     let mut image_data = Vec::new();
     let depth: u32 = match info.bit_depth {
         png::BitDepth::One => 1,
@@ -63,17 +69,15 @@ let (texture, tex_future) = {
     };
     image_data.resize((info.width * info.height * depth) as usize, 0);
     reader.next_frame(&mut image_data).unwrap();
-    let dimensions = Dimensions::Dim2d {
-        width: info.width,
-        height: info.height,
-    };
-    ImmutableImage::from_iter(
+    let (image, future) = ImmutableImage::from_iter(
         image_data.iter().cloned(),
         dimensions,
         MipmapsCount::One,
-        Format::R8G8B8A8Srgb,
+        Format::R8G8B8A8_SRGB,
         queue.clone(),
-    ).unwrap()
+    )
+    .unwrap();
+    (ImageView::new(image).unwrap(), future)
 };
 ```
 
@@ -100,20 +104,23 @@ impl Monospace {
         let png_bytes = include_bytes!("./textures/texture_small.png").to_vec();
         let cursor = Cursor::new(png_bytes);
         let decoder = png::Decoder::new(cursor);
-        let (info, mut reader) = decoder.read_info().unwrap();
+        let mut reader = decoder.read_info().unwrap();
+        let info = reader.info();
+        let width = info.width;
+        let height = info.height;
         let mut image_data = Vec::new();
         let depth: u32 = match info.bit_depth {
             png::BitDepth::One => 1,
             png::BitDepth::Two => 2,
             png::BitDepth::Four => 4,
             png::BitDepth::Eight => 8,
-            png::BitDepth::Sixteen => 16
+            png::BitDepth::Sixteen => 16,
         };
-        image_data.resize((info.width * info.height * depth) as usize, 0);
+        image_data.resize((width * height * depth) as usize, 0);
         reader.next_frame(&mut image_data).unwrap();
 
         Monospace {
-            input_width: info.width as usize,
+            input_width: width as usize,
             texture_data: image_data,
         }
     }
@@ -167,20 +174,22 @@ Before making our counter, let's update the current texture in `main.rs` to use 
 `main.rs`
 ```rust
 let (texture, tex_future) = {
-    let mono = Monospace::new();
-
-    let (dat, height, width) = mono.text("201");
-    let dimensions = Dimensions::Dim2d {
-        width,
-        height,
+    let (dat, height, width) = mono.text(&now.elapsed().as_secs().to_string());
+    let dimensions = ImageDimensions::Dim2d {
+        width: width,
+        height: height,
+        array_layers: 1,
     };
-    ImmutableImage::from_iter(
+
+    let (image, future) = ImmutableImage::from_iter(
         dat.iter().cloned(),
         dimensions,
         MipmapsCount::One,
-        Format::R8G8B8A8Srgb,
+        Format::R8G8B8A8_SRGB,
         queue.clone(),
-    ).unwrap()
+    )
+    .unwrap();
+    (ImageView::new(image).unwrap(), future)
 };
 ```
 
@@ -215,17 +224,21 @@ fn main() {
 
         let (texture, tex_future) = {
             let (dat, height, width) = mono.text(&now.elapsed().as_secs().to_string());
-            let dimensions = Dimensions::Dim2d {
-                width,
-                height,
+            let dimensions = ImageDimensions::Dim2d {
+                width: width,
+                height: height,
+                array_layers: 1,
             };
-            ImmutableImage::from_iter(
+
+            let (image, future) = ImmutableImage::from_iter(
                 dat.iter().cloned(),
                 dimensions,
                 MipmapsCount::One,
-                Format::R8G8B8A8Srgb,
+                Format::R8G8B8A8_SRGB,
                 queue.clone(),
-            ).unwrap()
+            )
+            .unwrap();
+            (ImageView::new(image).unwrap(), future)
         };
         
         // ...
@@ -246,4 +259,4 @@ As you can see, we're re-creating the texture every frame regardless of whether 
 
 ![image of our application displaying a count value of 20](./imgs/14/count.png)
 
-[Lesson Source Code](../lessons/14.%20Text)
+[Lesson Source Code](https://github.com/taidaesal/vulkano_tutorial/tree/gh-pages/lessons/14.%20Text)

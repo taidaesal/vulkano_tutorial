@@ -1,5 +1,5 @@
 [package]
-name = "specular_light_lesson"
+name = "lesson_12"
 version = "0.26.0"
 authors = ["taidaesal"]
 edition = "2021"

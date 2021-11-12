@@ -356,7 +356,7 @@ event_loop.run(move |event, _, control_flow| {
   });
 ```
 
-If you're new to Rust you might be a bit confused by the last item `() => {}`. Rust `match` statements must be *comprehensive*, which just means that they need to account for all possible values. There are, as you could probably guess, way more than 3 possible events so we use a special bit of Rust syntax to say, basically, "if we have anything else that dosen't fit above, do nothing." Rust forces us to be explicit about this as a way of catching errors where programmers update an enum but forget to update where it's used.
+If you're new to Rust you might be a bit confused by the last item `() => {}`. Rust `match` statements must be *comprehensive*, which just means that they need to account for all possible values. There are, as you could probably guess, way more than 3 possible events so we use a special bit of Rust syntax to say, basically, "if we have anything else that doesn't fit above, do nothing." Rust forces us to be explicit about this as a way of catching errors where programmers update an enum but forget to update where it's used.
 
 This `match` block will be unchanged throughout these tutorials, so for the most part it won't be called out specifically after this point. When we talk about the "program loop" in later tutorials we mean the code that goes where the comment `// do our render operations here` currently lives.
 

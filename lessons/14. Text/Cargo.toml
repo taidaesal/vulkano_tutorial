@@ -1,11 +1,11 @@
 [package]
-name = "text_lesson"
+name = "lesson_14"
 version = "0.26.0"
 authors = ["taidaesal"]
 edition = "2021"
 
 [dependencies]
-png = "0.16.8"
+png = "0.17.2"
 vulkano = "0.26.0"
 winit = "0.25.0"
 vulkano-win = "0.26.0"

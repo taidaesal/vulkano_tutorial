@@ -1,11 +1,11 @@
-// Copyright (c) 2020 taidaesal
+// Copyright (c) 2021 taidaesal
 // Licensed under the MIT license
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>
 
-mod loader;
 mod face;
+mod loader;
 mod vertex;
-pub use self::loader::Loader as Loader;
+pub use self::loader::Loader;
 
 use std::fmt;
 
@@ -18,7 +18,7 @@ pub struct DummyVertex {
     /// A regular position vector with the z-value shaved off for space.
     /// This assumes the shaders will take a `vec2` and transform it as
     /// needed.
-    pub position: [f32; 2]
+    pub position: [f32; 2],
 }
 
 impl DummyVertex {
@@ -43,12 +43,24 @@ impl DummyVertex {
     /// ```
     pub fn list() -> [DummyVertex; 6] {
         [
-            DummyVertex { position: [-1.0, -1.0] },
-            DummyVertex { position: [-1.0, 1.0] },
-            DummyVertex { position: [1.0, 1.0] },
-            DummyVertex { position: [-1.0, -1.0] },
-            DummyVertex { position: [1.0, 1.0] },
-            DummyVertex { position: [1.0, -1.0] }
+            DummyVertex {
+                position: [-1.0, -1.0],
+            },
+            DummyVertex {
+                position: [-1.0, 1.0],
+            },
+            DummyVertex {
+                position: [1.0, 1.0],
+            },
+            DummyVertex {
+                position: [-1.0, -1.0],
+            },
+            DummyVertex {
+                position: [1.0, 1.0],
+            },
+            DummyVertex {
+                position: [1.0, -1.0],
+            },
         ]
     }
 }
@@ -57,7 +69,7 @@ impl DummyVertex {
 #[derive(Default, Debug, Clone)]
 pub struct ColoredVertex {
     pub position: [f32; 3],
-    pub color: [f32; 3]
+    pub color: [f32; 3],
 }
 
 /// A structure used for the vertex information starting
@@ -78,17 +90,36 @@ impl fmt::Display for DummyVertex {
 
 impl fmt::Display for ColoredVertex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let pos = format!("[{:.6}, {:.6}, {:.6}]", self.position[0], self.position[1], self.position[2]);
-        let color = format!("[{:.6}, {:.6}, {:.6}]", self.color[0], self.color[1], self.color[2]);
+        let pos = format!(
+            "[{:.6}, {:.6}, {:.6}]",
+            self.position[0], self.position[1], self.position[2]
+        );
+        let color = format!(
+            "[{:.6}, {:.6}, {:.6}]",
+            self.color[0], self.color[1], self.color[2]
+        );
         write!(f, "ColoredVertex {{ position: {}, color: {} }}", pos, color)
     }
 }
 
 impl fmt::Display for NormalVertex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let pos = format!("[{:.6}, {:.6}, {:.6}]", self.position[0], self.position[1], self.position[2]);
-        let color = format!("[{:.6}, {:.6}, {:.6}]", self.color[0], self.color[1], self.color[2]);
-        let norms = format!("[{:.6}, {:.6}, {:.6}]", self.normal[0], self.normal[1], self.normal[2]);
-        write!(f, "NormalVertex {{ position: {}, normal: {}, color: {} }}", pos, norms, color)
+        let pos = format!(
+            "[{:.6}, {:.6}, {:.6}]",
+            self.position[0], self.position[1], self.position[2]
+        );
+        let color = format!(
+            "[{:.6}, {:.6}, {:.6}]",
+            self.color[0], self.color[1], self.color[2]
+        );
+        let norms = format!(
+            "[{:.6}, {:.6}, {:.6}]",
+            self.normal[0], self.normal[1], self.normal[2]
+        );
+        write!(
+            f,
+            "NormalVertex {{ position: {}, normal: {}, color: {} }}",
+            pos, norms, color
+        )
     }
 }
