@@ -119,14 +119,14 @@ mod ambient_frag {
 }
 
 fn main() {
-    let mut cube = Model::new("data/models/suzanne.obj").build();
+    let mut model = Model::new("data/models/suzanne.obj").build();
     let mut mvp = MVP::new();
     mvp.view = look_at(
         &vec3(0.0, 0.0, 0.01),
         &vec3(0.0, 0.0, 0.0),
         &vec3(0.0, -1.0, 0.0),
     );
-    cube.translate(vec3(0.0, 0.0, -1.5));
+    model.translate(vec3(0.0, 0.0, -1.5));
 
     let ambient_light = AmbientLight {
         color: [1.0, 1.0, 1.0],
@@ -328,7 +328,7 @@ fn main() {
         device.clone(),
         BufferUsage::all(),
         false,
-        cube.data().iter().cloned(),
+        model.data().iter().cloned(),
     )
     .unwrap();
 
@@ -429,13 +429,13 @@ fn main() {
                 let elapsed = rotation_start.elapsed().as_secs() as f64
                     + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
                 let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
-                cube.zero_rotation();
-                cube.rotate(elapsed_as_radians as f32 * 50.0, vec3(0.0, 0.0, 1.0));
-                cube.rotate(elapsed_as_radians as f32 * 30.0, vec3(0.0, 1.0, 0.0));
-                cube.rotate(elapsed_as_radians as f32 * 20.0, vec3(1.0, 0.0, 0.0));
+                model.zero_rotation();
+                model.rotate(elapsed_as_radians as f32 * 50.0, vec3(0.0, 0.0, 1.0));
+                model.rotate(elapsed_as_radians as f32 * 30.0, vec3(0.0, 1.0, 0.0));
+                model.rotate(elapsed_as_radians as f32 * 20.0, vec3(1.0, 0.0, 0.0));
 
                 let uniform_data = deferred_vert::ty::MVP_Data {
-                    model: cube.model_matrix().into(),
+                    model: model.model_matrix().into(),
                     view: mvp.view.into(),
                     projection: mvp.projection.into(),
                 };

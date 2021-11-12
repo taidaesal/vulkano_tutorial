@@ -1,5 +1,5 @@
 [package]
-name = "uniform_refactoring_lesson"
+name = "lesson_10"
 version = "0.26.0"
 authors = ["taidaesal"]
 edition = "2021"

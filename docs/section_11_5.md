@@ -83,8 +83,8 @@ As you hopefully remember from earlier lessons, to use shaders we need to declar
 ```rust
 pub struct System {
     // ...
-    ambient_pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-    light_obj_pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+    ambient_pipeline: Arc<GraphicsPipeline>,
+    light_obj_pipeline: Arc<GraphicsPipeline>,
     // ...
 }
 
@@ -223,10 +223,10 @@ impl System {
             }
         }
 
-        let mut model = Model::new("./src/models/sphere.obj").color(directional_light.color).build();
+        let mut model = Model::new("data/models/sphere.obj").color(directional_light.color).uniform_scale_factor(0.2).build();
         model.translate(directional_light.get_position());
 
-        let model_uniform_subbuffer = {
+        let model_uniform_subbuffer = Arc::new({
             let (model_mat, normal_mat) = model.model_matrices();
 
             let uniform_data = deferred_vert::ty::Model_Data {
@@ -235,15 +235,20 @@ impl System {
             };
 
             self.model_uniform_buffer.next(uniform_data).unwrap()
-        };
+        });
 
-        let deferred_layout = self.light_obj_pipeline.descriptor_set_layout(1).unwrap();
-        let model_set:Arc<dyn DescriptorSet + Send + Sync> = Arc::new(
-            PersistentDescriptorSet::start(deferred_layout.clone())
-                .add_buffer(model_uniform_subbuffer.clone()).unwrap()
-                .build().unwrap());
+        let deferred_layout = self
+            .light_obj_pipeline
+            .layout()
+            .descriptor_set_layouts()
+            .get(1)
+            .unwrap();
+        let mut model_set_builder =
+            PersistentDescriptorSet::start(deferred_layout.clone());
+        model_set_builder.add_buffer(model_uniform_subbuffer.clone()).unwrap();
+        let model_set = Arc::new(model_set_builder.build().unwrap());
 
-        let vertex_buffer:Arc<dyn BufferAccess + Send + Sync> = CpuAccessibleBuffer::from_iter(
+        let vertex_buffer = CpuAccessibleBuffer::from_iter(
             self.device.clone(),
             BufferUsage::all(),
             false,
@@ -251,17 +256,18 @@ impl System {
 
         let mut commands = self.commands.take().unwrap();
         commands
-            .draw(self.light_obj_pipeline.clone(),
-                  &self.dynamic_state,
-                  vec![vertex_buffer.clone()],
-                  vec![self.vp_set.clone(), model_set.clone()],
-                  (), 
-                  vec![]
-            )
-            .unwrap();
+        .bind_pipeline_graphics(self.light_obj_pipeline.clone())
+        .bind_descriptor_sets(
+            PipelineBindPoint::Graphics,
+            self.light_obj_pipeline.layout().clone(),
+            0,
+            (self.vp_set.clone(), model_set.clone()),
+        )
+        .bind_vertex_buffers(0, vertex_buffer.clone())
+        .draw(vertex_buffer.len() as u32, 1, 0, 0)
+        .unwrap();
         self.commands = Some(commands);
-    }
-}
+    }}
 ```
 
 Firstly, you might notice that we're loading a new `Model` each time we call this method. While it would be more efficient to load this model a single time and just use it for every call, that adds more complexity to something that, in the end, is just for the convenience for us as developers. Even complex scenes will likely have a couple dozen light sources *at most* and so the performance impact of this inefficiency is trivial. Anything which requires rendering more than that will likely require more power than this little toy rendering system will ever be capable of delivering. As always, feel free to modify your own code however you wish to meet your own requirements.
@@ -284,7 +290,7 @@ fn main() {
 
     let mut previous_frame_end = Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
 
-    let mut teapot = Model::new("./src/models/teapot.obj").build();
+    let mut teapot = Model::new("data/models/teapot.obj").build();
     teapot.translate(vec3(0.0, 2.0, -5.0));
 
     let directional_light = DirectionalLight::new([-4.0, -4.0, -3.5], [1.0, 1.0, 1.0]);
@@ -384,7 +390,7 @@ impl System {
     // ...
     pub fn light_object(&mut self, directional_light: &DirectionalLight) {
         // ...
-        let mut model = Model::new("./src/models/sphere.obj").color(directional_light.color).uniform_scale_factor(0.2).build();
+        let mut model = Model::new("data/models/sphere.obj").color(directional_light.color).uniform_scale_factor(0.2).build();
         // ...
     }
     // ...
@@ -507,4 +513,4 @@ Run the code and see for yourself. With these few minor tweaks, our light object
 
 This is a rather small feature but it's one that I, personally, have found pretty useful in my own programs. Little things that make life easier for you as the programmer can go a long way in more complex projects.
 
-[lesson source code](../lessons/11.5.%20Light%20Objects)
+[lesson source code](https://github.com/taidaesal/vulkano_tutorial/tree/gh-pages/lessons/11.5.%20Light%20Objects)

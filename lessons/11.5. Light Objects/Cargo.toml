@@ -1,5 +1,5 @@
 [package]
-name = "rendering_light_objects"
+name = "lesson_11_5"
 version = "0.26.0"
 authors = ["taidaesal"]
 edition = "2021"

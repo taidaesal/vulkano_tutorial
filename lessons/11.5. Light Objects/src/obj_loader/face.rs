@@ -1,4 +1,4 @@
-// Copyright (c) 2020 taidaesal
+// Copyright (c) 2021 taidaesal
 // Licensed under the MIT license
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>
 
@@ -15,7 +15,7 @@ impl RawFace {
     //
     // Blender files are a common example
     pub fn new(raw_arg: &str, invert: bool) -> RawFace {
-        let arguments:Vec<&str> = raw_arg.split_whitespace().collect();
+        let arguments: Vec<&str> = raw_arg.split_whitespace().collect();
         RawFace {
             verts: RawFace::parse(arguments.clone(), 0, invert).unwrap(),
             norms: RawFace::parse(arguments.clone(), 2, invert),
@@ -24,17 +24,17 @@ impl RawFace {
     }
 
     fn parse(inpt: Vec<&str>, index: usize, invert: bool) -> Option<[usize; 3]> {
-        let f1:Vec<&str> = inpt.get(0).unwrap().split("/").collect();
-        let f2:Vec<&str> = inpt.get(1).unwrap().split("/").collect();
-        let f3:Vec<&str> = inpt.get(2).unwrap().split("/").collect();
+        let f1: Vec<&str> = inpt.get(0).unwrap().split("/").collect();
+        let f2: Vec<&str> = inpt.get(1).unwrap().split("/").collect();
+        let f3: Vec<&str> = inpt.get(2).unwrap().split("/").collect();
         let a1 = f1.get(index).unwrap().clone();
         let a2 = f2.get(index).unwrap().clone();
         let a3 = f3.get(index).unwrap().clone();
         match a1 {
             "" => None,
             _ => {
-                let p1:usize = a1.parse().unwrap();
-                let (p2, p3):(usize, usize) = if invert {
+                let p1: usize = a1.parse().unwrap();
+                let (p2, p3): (usize, usize) = if invert {
                     (a3.parse().unwrap(), a2.parse().unwrap())
                 } else {
                     (a2.parse().unwrap(), a3.parse().unwrap())
@@ -60,6 +60,10 @@ impl fmt::Display for RawFace {
                 format!("{}/{}/{}", x[0], x[1], x[2])
             }
         };
-        write!(f, "Face:\n\tVertices: {}\n\tNormals: {}\n\tTextures: {}", verts, normals, textures)
+        write!(
+            f,
+            "Face:\n\tVertices: {}\n\tNormals: {}\n\tTextures: {}",
+            verts, normals, textures
+        )
     }
 }
