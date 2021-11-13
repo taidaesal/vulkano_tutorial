@@ -1,3 +1,10 @@
+---
+layout: default
+title: Uniform Refactoring
+back_link: "./section_9.html"
+next_link: "./section_11.html"
+---
+
 # Uniform Refactoring
 
 Up until now, we've been using our regular MVP matrix to transform all our geometry data as well as our normals. However, this poses two problems:

@@ -1,3 +1,7 @@
+---
+home: False
+---
+
 # Vulkano Tutorial
 
 This site is intended to serve as a tutorial for using Vulkan in Rust via the Vulkano crate. This mostly documents my own experiments with learning graphical programming but I’m writing it down here in case others might find it useful. The Vulkano crate is in active development and so regularly experiences breaking changes. I will try to keep the examples updated but this is a hobby project.

@@ -1,3 +1,10 @@
+---
+layout: default
+title: Light III
+back_link: "./section_11_5.html"
+next_link: "./section_13.html"
+---
+
 # Specular Lights
 
 So far, we've made due with a simplified lighting system that only considers the ambient light and the direction-based intensity of individual light sources. This is just fine for our purposes and, to be honest, we could probably get through everything else I want to put in these tutorials with just this. However, since we're discussing lights already we might as well add the component we're missing: *specular lighting*.

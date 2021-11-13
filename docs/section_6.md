@@ -1,3 +1,10 @@
+---
+layout: default
+title: Light I
+back_link: "./section_5.html"
+next_link: "./section_7.html"
+---
+
 # Light
 
 We've reached a major milestone in our development as a Vulkan programmer. We've played around with triangles and learned the fundamentals and that's all well and good, but so far we've been languishing at the "hello world" level of program complexity. In this lesson we bump up the complexity quite a bit to introduce a lighting system to our scene. That might sound intimidating but don't worry, you already know everything you need to succeed.

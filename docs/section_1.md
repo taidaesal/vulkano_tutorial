@@ -1,3 +1,10 @@
+---
+layout: default
+title: Our First Window
+back_link: "./section_0.html"
+next_link: "./section_2.html"
+---
+
 # Our First Window
 
 ## Getting started

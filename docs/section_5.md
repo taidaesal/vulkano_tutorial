@@ -1,3 +1,10 @@
+---
+layout: default
+title: Face-Culling
+back_link: "./section_4.html"
+next_link: "./section_6.html"
+---
+
 # Winding Order and Face Culling
 
 Much like depth testing, up until now we've been overlooking a concept that's fundamental to getting complicated scenes to work: winding order. What's that you might ask? It's nothing more complicated than the order in which we specify a triangle's vertices. Consider the following diagram:

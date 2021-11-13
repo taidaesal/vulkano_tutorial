@@ -1,3 +1,10 @@
+---
+layout: default
+title: Texture
+back_link: "./section_12.html"
+next_link: "./section_14.html"
+---
+
 # Textures
 
 We at last come to a topic we've left oddly late compared to most tutorials and one you may have been eager to get to: textures. We've discussed why the tutorials are structured like this in the past. Specifically, textures are simply a specialized type of data buffer we upload to the graphics hardware. As such, I feel that while textures are vital to any graphical application they do not really help you understand more about Vulkan in particular. Now that we've covered most of the basic concepts we can move on to topics like this.

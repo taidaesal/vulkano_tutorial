@@ -1,3 +1,10 @@
+---
+layout: default
+title: Light II
+back_link: "./section_7.html"
+next_link: "./section_9.html"
+---
+
 # Multiple Lights
 
 This lesson won't really introduce any new concepts we haven't seen before. Instead, this lesson will be how to use what we already know to apply as many directional lights to our scene as we want. The theory behind the process is simple: instead of having our second render pass overwrite anything in the final image each time it's run, we instead _blend_ the two together. This means that we can run our directional shader once per light source, each time adding its output to the final image.

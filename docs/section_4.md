@@ -1,3 +1,10 @@
+---
+layout: default
+title: Depth
+back_link: "./section_3.html"
+next_link: "./section_5.html"
+---
+
 # Depth
 
 We're four lessons into this thing but we've been cheating the whole time. We have been talking about models in 3-dimensional space and how to transform them and such. However, we have actually been silently ignoring the third dimension entirely. What do I mean by that? Let's look at an example.

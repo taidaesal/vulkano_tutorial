@@ -1,3 +1,9 @@
+---
+layout: default
+title: Text
+back_link: "./section_13.html"
+---
+
 # Text
 
 One of the common application for textures outside of decorating models is to display text. An under-appreciated aspect of video games is the Graphical User Interface (GUI) that goes along with it, and the most fundamental component of the GUI is text. Text lets you directly communicate the critical parts of the interface to the user, provide directions, and clarify potentially confusing items.

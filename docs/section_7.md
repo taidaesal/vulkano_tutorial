@@ -1,3 +1,10 @@
+---
+layout: default
+title: Multi-pass Rendering
+back_link: "./section_6.html"
+next_link: "./section_8.html"
+---
+
 # Multi-pass Rendering
 
 So far we've been rendering our scene in a single pass. We added a second attachment buffer a couple lessons ago but everything still takes place in one go. To continue adding more advanced features, however, we are going to need to expand our horizons a bit to learn how to render with more than one pass, also called _deferred rendering_.

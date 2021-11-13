@@ -1,2 +1,9 @@
 theme: jekyll-theme-cayman
 title: Vulkano Tutorial
+
+defaults:
+  -
+    scope:
+      path: ""
+    values:
+      home: True

@@ -1,3 +1,11 @@
+---
+layout: default
+title: Light Object
+back_link: "./section_11.html"
+next_link: "./section_12.html"
+---
+
+
 # Light Objects
 
 This will be a simpler lesson which will implement a small feature to make our life easier. Specifically, we'd like to have the option to render something on-screen to represent a light source. Thus far, all our lights have just kind of shone from out of nowhere, leaving the viewer to infer their location from the light they cast on the scene. We'd like to render a small sphere on screen at the starting point of the light and with the same color as the light. This will help us determine if our lighting model is correct or if there are errors that need to be fixed.

@@ -1,3 +1,10 @@
+---
+layout: default
+title: Models
+back_link: "./section_8.html"
+next_link: "./section_10.html"
+---
+
 # Model Loading
 
 Until now, we've gotten by with models that we've programmed in by hand. This worked for a triangle and, later, a cube, but we can't keep doing that forever. So let's look at a topic we've been avoiding until now: how to load a model from a file.

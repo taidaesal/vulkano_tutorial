@@ -1,3 +1,10 @@
+---
+layout: default
+title: Adding a Triangle
+back_link: "./section_1.html"
+next_link: "./section_3.html"
+---
+
 # Adding a Triangle
 
 Now that we've done all the boring work of initializing Vulkan it's time to do something fun: putting an actual shape on screen.

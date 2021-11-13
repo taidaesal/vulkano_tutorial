@@ -1,3 +1,10 @@
+---
+layout: default
+title: Uniforms
+back_link: "./section_2.html"
+next_link: "./section_4.html"
+---
+
 # Moving things around
 
 To learn how to move things around in our scene you need to understand a bit about transformations. Basically, a transformation is any change like scaling, rotating, or moving that we might want to apply on one of our models. It's all a matter of linear algebra where we have a vector representing a location in space and we multiply it by one or more matrices representing the transformation we want. It's okay if you don't know much about linear algebra (god knows I don't) because we'll be using a crate to handle all the heavy math for us. For the most part, we just need to keep in mind that those matrices are how we move things around, not by changing the initial position vector.

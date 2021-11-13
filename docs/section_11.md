@@ -1,3 +1,10 @@
+---
+layout: default
+title: Render System I
+back_link: "./section_10.html"
+next_link: "./section_11_5.html"
+---
+
 # Render System I
 
 After completing 10 lessons in Vulkan let's take stock of where we are. At the start of this series we had a blank `main.rs` and no idea how to make it do anything interesting. At the end of a lengthy first lesson we had a blank screen that didn't do anything. However, now we have a multi-staged rendering pipeline running three sets of shaders to render models, ambient lighting, and directional lights. That we have not learned everything we might want to know about basic rendering should not take away from appreciating how far we've come to make it to this point.
