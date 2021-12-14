@@ -6,23 +6,25 @@
 // from code provided by the Vulkano project under
 // the MIT license
 
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::buffer::{CpuBufferPool, TypedBufferAccess};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
+use vulkano::image::attachment::AttachmentImage;
 use vulkano::image::view::ImageView;
-use vulkano::image::{AttachmentImage, SwapchainImage};
+use vulkano::image::{ImageAccess, SwapchainImage};
 use vulkano::instance::Instance;
-use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
-use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
-use vulkano::swapchain;
-use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
-use vulkano::sync;
-use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::pipeline::graphics::depth_stencil::DepthStencilState;
+use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
+use vulkano::pipeline::graphics::rasterization::{CullMode, RasterizationState};
+use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
+use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
+use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
 
 use vulkano_win::VkSurfaceBuild;
@@ -210,52 +212,47 @@ void main() {
         }
     }
 
-    let vs = vs::Shader::load(device.clone()).unwrap();
-    let fs = fs::Shader::load(device.clone()).unwrap();
+    let vs = vs::load(device.clone()).unwrap();
+    let fs = fs::load(device.clone()).unwrap();
 
     let uniform_buffer = CpuBufferPool::<vs::ty::MVP_Data>::uniform_buffer(device.clone());
     let ambient_buffer = CpuBufferPool::<fs::ty::Ambient_Data>::uniform_buffer(device.clone());
     let directional_buffer =
         CpuBufferPool::<fs::ty::Directional_Light_Data>::uniform_buffer(device.clone());
 
-    let render_pass = Arc::new(
-        vulkano::single_pass_renderpass!(device.clone(),
-            attachments: {
-                color: {
-                    load: Clear,
-                    store: Store,
-                    format: swapchain.format(),
-                    samples: 1,
-                },
-                depth: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::D16_UNORM,
-                    samples: 1,
-                }
+    let render_pass = vulkano::single_pass_renderpass!(device.clone(),
+        attachments: {
+            color: {
+                load: Clear,
+                store: Store,
+                format: swapchain.format(),
+                samples: 1,
             },
-            pass: {
-                color: [color],
-                depth_stencil: {depth}
+            depth: {
+                load: Clear,
+                store: DontCare,
+                format: Format::D16_UNORM,
+                samples: 1,
             }
-        )
-        .unwrap(),
-    );
+        },
+        pass: {
+            color: [color],
+            depth_stencil: {depth}
+        }
+    )
+    .unwrap();
 
-    let pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input_single_buffer::<Vertex>()
-            .vertex_shader(vs.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .fragment_shader(fs.main_entry_point(), ())
-            .depth_stencil_simple_depth()
-            .front_face_counter_clockwise()
-            .cull_mode_back()
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .build(device.clone())
-            .unwrap(),
-    );
+    let pipeline = GraphicsPipeline::start()
+        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
+        .input_assembly_state(InputAssemblyState::new())
+        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
+        .depth_stencil_state(DepthStencilState::simple_depth_test())
+        .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
+        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        .build(device.clone())
+        .unwrap();
 
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
         device.clone(),
@@ -530,7 +527,7 @@ void main() {
 
             let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into(), 1f32.into()];
 
-            let uniform_buffer_subbuffer = Arc::new({
+            let uniform_buffer_subbuffer = {
                 let elapsed = rotation_start.elapsed().as_secs() as f64
                     + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
                 let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
@@ -558,25 +555,25 @@ void main() {
                 };
 
                 uniform_buffer.next(uniform_data).unwrap()
-            });
+            };
 
-            let ambient_uniform_subbuffer = Arc::new({
+            let ambient_uniform_subbuffer = {
                 let uniform_data = fs::ty::Ambient_Data {
                     color: ambient_light.color.into(),
                     intensity: ambient_light.intensity.into(),
                 };
 
                 ambient_buffer.next(uniform_data).unwrap()
-            });
+            };
 
-            let directional_uniform_subbuffer = Arc::new({
+            let directional_uniform_subbuffer = {
                 let uniform_data = fs::ty::Directional_Light_Data {
                     position: directional_light.position.into(),
                     color: directional_light.color.into(),
                 };
 
                 directional_buffer.next(uniform_data).unwrap()
-            });
+            };
 
             let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
             let mut set_builder = PersistentDescriptorSet::start(layout.clone());
@@ -585,7 +582,7 @@ void main() {
             set_builder
                 .add_buffer(directional_uniform_subbuffer)
                 .unwrap();
-            let set = Arc::new(set_builder.build().unwrap());
+            let set = set_builder.build().unwrap();
 
             let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary(
                 device.clone(),
@@ -649,8 +646,8 @@ fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
-) -> Vec<Arc<dyn FramebufferAbstract>> {
-    let dimensions = images[0].dimensions();
+) -> Vec<Arc<Framebuffer>> {
+    let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
     images
@@ -661,15 +658,13 @@ fn window_size_dependent_setup(
                 AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
             )
             .unwrap();
-            Arc::new(
-                Framebuffer::start(render_pass.clone())
-                    .add(view)
-                    .unwrap()
-                    .add(depth_buffer.clone())
-                    .unwrap()
-                    .build()
-                    .unwrap(),
-            ) as Arc<dyn FramebufferAbstract>
+            Framebuffer::start(render_pass.clone())
+                .add(view)
+                .unwrap()
+                .add(depth_buffer.clone())
+                .unwrap()
+                .build()
+                .unwrap()
         })
         .collect::<Vec<_>>()
 }

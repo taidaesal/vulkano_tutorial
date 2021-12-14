@@ -60,8 +60,7 @@ pub struct System {
 impl System {
     pub fn new(event_loop: &EventLoop<()>) -> System  {
         // ...
-        let render_pass = Arc::new(
-            vulkano::ordered_passes_renderpass!(device.clone(),
+        let render_pass = vulkano::ordered_passes_renderpass!(device.clone(),
                 attachments: {
                     final_color: {
                         load: Clear,
@@ -113,8 +112,7 @@ impl System {
                     }
                 ]
             )
-            .unwrap(),
-        );
+            .unwrap();
         // ...
         let (framebuffers, color_buffer, normal_buffer, frag_location_buffer, specular_buffer) =
             System::window_size_dependent_setup(
@@ -138,13 +136,13 @@ impl System {
         render_pass: Arc<RenderPass>,
         viewport: &mut Viewport,
     ) -> (
-        Vec<Arc<dyn FramebufferAbstract>>,
-        Arc<ImageView<Arc<AttachmentImage>>>,
-        Arc<ImageView<Arc<AttachmentImage>>>,
-        Arc<ImageView<Arc<AttachmentImage>>>,
-        Arc<ImageView<Arc<AttachmentImage>>>,
-    ) {        
-        let dimensions = images[0].dimensions();
+        Vec<Arc<Framebuffer>>,
+        Arc<ImageView<AttachmentImage>>,
+        Arc<ImageView<AttachmentImage>>,
+        Arc<ImageView<AttachmentImage>>,
+        Arc<ImageView<AttachmentImage>>,
+    ) {
+        let dimensions = images[0].dimensions().width_height();
         viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
         let color_buffer = ImageView::new(
@@ -195,23 +193,21 @@ impl System {
                             .unwrap(),
                     )
                     .unwrap();
-                    Arc::new(
-                        Framebuffer::start(render_pass.clone())
-                            .add(view)
-                            .unwrap()
-                            .add(color_buffer.clone())
-                            .unwrap()
-                            .add(normal_buffer.clone())
-                            .unwrap()
-                            .add(frag_location_buffer.clone())
-                            .unwrap()
-                            .add(specular_buffer.clone())
-                            .unwrap()
-                            .add(depth_buffer.clone())
-                            .unwrap()
-                            .build()
-                            .unwrap(),
-                    ) as Arc<dyn FramebufferAbstract>
+                    Framebuffer::start(render_pass.clone())
+                        .add(view)
+                        .unwrap()
+                        .add(color_buffer.clone())
+                        .unwrap()
+                        .add(normal_buffer.clone())
+                        .unwrap()
+                        .add(frag_location_buffer.clone())
+                        .unwrap()
+                        .add(specular_buffer.clone())
+                        .unwrap()
+                        .add(depth_buffer.clone())
+                        .unwrap()
+                        .build()
+                        .unwrap()
                 })
                 .collect::<Vec<_>>(),
             color_buffer.clone(),
@@ -292,7 +288,7 @@ impl System {
             .unwrap()
             .add_buffer(camera_buffer.clone())
             .unwrap();
-        let directional_set = Arc::new(directional_set_builder.build().unwrap());
+        let directional_set = directional_set_builder.build().unwrap();
         //...
     }
 
@@ -320,7 +316,7 @@ impl System {
             .unwrap()
             .add_buffer(specular_buffer.clone())
             .unwrap();
-        let model_set = Arc::new(model_set_builder.build().unwrap());
+        let model_set = model_set_builder.build().unwrap();
         //...
     }
 
@@ -462,7 +458,7 @@ Aside from some new math, nothing too exciting is happening here. However, make 
 ```rust
 fn main() {
     // ...
-    let mut obj = Model::new("./src/models/cube.obj").build();
+    let mut obj = Model::new("data/models/cube.obj").build();
     obj.translate(vec3(0.0, 0.0, -2.0));
     // ...
     let x: f32 = 3.0 * elapsed_as_radians.cos();

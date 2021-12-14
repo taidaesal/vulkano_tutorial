@@ -148,7 +148,7 @@ Important note: `<vs::ty::MVP_Data>` is not just random gibberish. It **must** b
 In the section above we create a `BufferPool` but that means we need to request and fill a buffer from that pool each time we want to use it. The following code can be added right after we recreate the swapchain in our main program loop.
 
 ```rust
-let uniform_buffer_subbuffer = Arc::new({
+let uniform_buffer_subbuffer = {
     let mvp = MVP::new();
     let uniform_data = vs::ty::MVP_Data {
         model: mvp.model.into(),
@@ -157,7 +157,7 @@ let uniform_buffer_subbuffer = Arc::new({
     };
 
     uniform_buffer.next(uniform_data).unwrap()
-});
+};
 ```
 
 Right now we aren't doing anything special with our actual MVP data. Instead, we're just passing the values directly into our `vs::ty::MVP_Data` object. We'll revisit this section in a little bit.
@@ -273,7 +273,7 @@ Doing this moves our triangle away from the viewer "deeper" into the screen. Thi
 Once you've done that, update the sub-buffer creation screen to look like this. Don't worry that it looks hacky, we'll clean it up in the end.
 
 ```rust
-let uniform_buffer_subbuffer = Arc::new({
+let uniform_buffer_subbuffer = {
     let mvp = MVP::new();
     let dimensions = if let Some(dimensions) = window.get_inner_size() {
         let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
@@ -289,7 +289,7 @@ let uniform_buffer_subbuffer = Arc::new({
     };
 
     uniform_buffer.next(uniform_data).unwrap()
-});
+};
 ```
 
 This sets the aspect ratio to be the same as our screen as sets the viewable area to be anything from depth 0.01 to 100.0. Run it again and you should see a triangle that looks basically the same, but which will not become distorted when you resize the window.
@@ -301,7 +301,7 @@ This sets the aspect ratio to be the same as our screen as sets the viewable are
 We'll take advantage of a method called `look_at()` to set our view matrix. It takes three vectors, the first representing the location of the eye (our view port), the second representing the direction we're looking, and the their representing which direction is "up" for us. In practice this is pretty simple and you can see this by updating the sub-buffer code as follows.
 
 ```rust
-let uniform_buffer_subbuffer = Arc::new({
+let uniform_buffer_subbuffer = {
     let mvp = MVP::new();
     let dimensions = if let Some(dimensions) = window.get_inner_size() {
         let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
@@ -318,7 +318,7 @@ let uniform_buffer_subbuffer = Arc::new({
     };
 
     uniform_buffer.next(uniform_data).unwrap()
-});
+};
 ```
 
 Run the code and you should see the following image.
@@ -348,7 +348,7 @@ Now that we understand what the coordinate directions in Vulkan look like, it's 
 The model matrix holds all the transformations we want to do to a particular model. Let's look at a model matrix that translates (moves) our triangle up and to the right.
 
 ```rust
-let uniform_buffer_subbuffer = Arc::new({
+let uniform_buffer_subbuffer = {
     let mvp = MVP::new();
     let dimensions = if let Some(dimensions) = window.get_inner_size() {
         let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
@@ -366,7 +366,7 @@ let uniform_buffer_subbuffer = Arc::new({
     };
 
     uniform_buffer.next(uniform_data).unwrap()
-});
+};
 ```
 
 run the code and you should see something like this:
@@ -417,7 +417,7 @@ mvp.model = translate(&identity(), &vec3(0.0, 0.0, -0.5));
 Lastly, we can simplify our sub-buffer creation code to use our new global `mvp` variable.
 
 ```rust
-let uniform_buffer_subbuffer = Arc::new({
+let uniform_buffer_subbuffer = {
     let uniform_data = vs::ty::MVP_Data {
         model: mvp.model.into(),
         view: mvp.view.into(),
@@ -425,7 +425,7 @@ let uniform_buffer_subbuffer = Arc::new({
     };
 
     uniform_buffer.next(uniform_data).unwrap()
-});
+};
 ```
 
 Run the code and you should see a triangle identical to the last one, just centered on the screen instead of moved up and to the right.
@@ -443,7 +443,7 @@ let rotation_start = Instant::now();
 now update our sub-buffer creation screen
 
 ```rust
-let uniform_buffer_subbuffer = Arc::new({
+let uniform_buffer_subbuffer = {
     let elapsed = rotation_start.elapsed().as_secs() as f64 + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
     let elapsed_as_radians = elapsed * pi::<f64>() / 180.0 * 30.0;
     let model = rotate_normalized_axis(&mvp.model, elapsed_as_radians as f32, &vec3(0.0, 0.0, 1.0));
@@ -455,7 +455,7 @@ let uniform_buffer_subbuffer = Arc::new({
     };
 
     uniform_buffer.next(uniform_data).unwrap()
-});
+};
 ```
 
 It's not something that can really be captured in a still image but if you run this code you should see a rotating triangle.

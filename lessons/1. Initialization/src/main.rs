@@ -10,14 +10,12 @@ use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, Subp
 use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::image::view::ImageView;
-use vulkano::image::SwapchainImage;
+use vulkano::image::{ImageAccess, SwapchainImage};
 use vulkano::instance::Instance;
-use vulkano::pipeline::viewport::Viewport;
-use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass};
-use vulkano::swapchain;
-use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
-use vulkano::sync;
-use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::pipeline::graphics::viewport::Viewport;
+use vulkano::render_pass::{Framebuffer, RenderPass};
+use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
 
 use vulkano_win::VkSurfaceBuild;
@@ -90,24 +88,22 @@ fn main() {
 
     // shaders would go here
 
-    let render_pass = Arc::new(
-        vulkano::single_pass_renderpass!(
-            device.clone(),
-            attachments: {
-                color: {
-                    load: Clear,
-                    store: Store,
-                    format: swapchain.format(),
-                    samples: 1,
-                }
-            },
-            pass: {
-                color: [color],
-                depth_stencil: {}
+    let render_pass = vulkano::single_pass_renderpass!(
+        device.clone(),
+        attachments: {
+            color: {
+                load: Clear,
+                store: Store,
+                format: swapchain.format(),
+                samples: 1,
             }
-        )
-        .unwrap(),
-    );
+        },
+        pass: {
+            color: [color],
+            depth_stencil: {}
+        }
+    )
+    .unwrap();
 
     // pipeline would be declared here
 
@@ -224,21 +220,19 @@ fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
-) -> Vec<Arc<dyn FramebufferAbstract>> {
-    let dimensions = images[0].dimensions();
+) -> Vec<Arc<Framebuffer>> {
+    let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
     images
         .iter()
         .map(|image| {
             let view = ImageView::new(image.clone()).unwrap();
-            Arc::new(
-                Framebuffer::start(render_pass.clone())
-                    .add(view)
-                    .unwrap()
-                    .build()
-                    .unwrap(),
-            ) as Arc<dyn FramebufferAbstract>
+            Framebuffer::start(render_pass.clone())
+                .add(view)
+                .unwrap()
+                .build()
+                .unwrap()
         })
         .collect::<Vec<_>>()
 }

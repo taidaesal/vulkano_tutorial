@@ -411,12 +411,12 @@ impl System {
     pub fn new(event_loop: &EventLoop) -> System {
         // ...
 
-        let deferred_vert = deferred_vert::Shader::load(device.clone()).unwrap();
-        let deferred_frag = deferred_frag::Shader::load(device.clone()).unwrap();
-        let directional_vert = directional_vert::Shader::load(device.clone()).unwrap();
-        let directional_frag = directional_frag::Shader::load(device.clone()).unwrap();
-        let ambient_vert = ambient_vert::Shader::load(device.clone()).unwrap();
-        let ambient_frag = ambient_frag::Shader::load(device.clone()).unwrap();
+        let deferred_vert = deferred_vert::load(device.clone()).unwrap();
+        let deferred_frag = deferred_frag::load(device.clone()).unwrap();
+        let directional_vert = directional_vert::load(device.clone()).unwrap();
+        let directional_frag = directional_frag::load(device.clone()).unwrap();
+        let ambient_vert = ambient_vert::load(device.clone()).unwrap();
+        let ambient_frag = ambient_frag::load(device.clone()).unwrap();
 
         System{
             // ...
@@ -485,7 +485,7 @@ impl System {
     pub fn new(event_loop: &EventLoop) -> System {
         // ...
 
-        let render_pass = Arc::new(vulkano::ordered_passes_renderpass!(device.clone(),
+        let render_pass = vulkano::ordered_passes_renderpass!(device.clone(),
             attachments: {
                 final_color: {
                     load: Clear,
@@ -524,7 +524,7 @@ impl System {
                     input: [color, normals]
                 }
             ]
-        ).unwrap());
+        ).unwrap();
 
         let deferred_pass = Subpass::from(render_pass.clone(), 0).unwrap();
         let lighting_pass = Subpass::from(render_pass.clone(), 1).unwrap();
@@ -559,68 +559,61 @@ impl System {
     pub fn new(event_loop: &EventLoop) -> System {
         // ...
 
-        let deferred_pipeline = Arc::new(GraphicsPipeline::start()
-            .vertex_input_single_buffer::<NormalVertex>()
-            .vertex_shader(deferred_vert.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .fragment_shader(deferred_frag.main_entry_point(), ())
-            .depth_stencil_simple_depth()
-            .front_face_counter_clockwise()
-            .cull_mode_back()
+        let deferred_pipeline = GraphicsPipeline::start()
+            .vertex_input_state(BuffersDefinition::new().vertex::<NormalVertex>())
+            .vertex_shader(deferred_vert.entry_point("main").unwrap(), ())
+            .input_assembly_state(InputAssemblyState::new())
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+            .fragment_shader(deferred_frag.entry_point("main").unwrap(), ())
+            .depth_stencil_state(DepthStencilState::simple_depth_test())
+            .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
             .render_pass(deferred_pass.clone())
             .build(device.clone())
-            .unwrap());
+            .unwrap();
 
-        let directional_pipeline = Arc::new(GraphicsPipeline::start()
-            .vertex_input_single_buffer::<DummyVertex>()
-            .vertex_shader(directional_vert.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .fragment_shader(directional_frag.main_entry_point(), ())
-            .blend_collective(AttachmentBlend {
-                enabled: true,
-                color_op: BlendOp::Add,
-                color_source: BlendFactor::One,
-                color_destination: BlendFactor::One,
-                alpha_op: BlendOp::Max,
-                alpha_source: BlendFactor::One,
-                alpha_destination: BlendFactor::One,
-                mask_red: true,
-                mask_green: true,
-                mask_blue: true,
-                mask_alpha: true,
-            })
-            .front_face_counter_clockwise()
-            .cull_mode_back()
+        let directional_pipeline = GraphicsPipeline::start()
+            .vertex_input_state(BuffersDefinition::new().vertex::<DummyVertex>())
+            .vertex_shader(directional_vert.entry_point("main").unwrap(), ())
+            .input_assembly_state(InputAssemblyState::new())
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+            .fragment_shader(directional_frag.entry_point("main").unwrap(), ())
+            .color_blend_state(
+                ColorBlendState::new(lighting_pass.num_color_attachments()).blend(
+                    AttachmentBlend {
+                        color_op: BlendOp::Add,
+                        color_source: BlendFactor::One,
+                        color_destination: BlendFactor::One,
+                        alpha_op: BlendOp::Max,
+                        alpha_source: BlendFactor::One,
+                        alpha_destination: BlendFactor::One,
+                    },
+                ),
+            )
             .render_pass(lighting_pass.clone())
             .build(device.clone())
-            .unwrap());
+            .unwrap();
 
-        let ambient_pipeline = Arc::new(GraphicsPipeline::start()
-            .vertex_input_single_buffer::<DummyVertex>()
-            .vertex_shader(ambient_vert.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .fragment_shader(ambient_frag.main_entry_point(), ())
-            .blend_collective(AttachmentBlend {
-                enabled: true,
-                color_op: BlendOp::Add,
-                color_source: BlendFactor::One,
-                color_destination: BlendFactor::One,
-                alpha_op: BlendOp::Max,
-                alpha_source: BlendFactor::One,
-                alpha_destination: BlendFactor::One,
-                mask_red: true,
-                mask_green: true,
-                mask_blue: true,
-                mask_alpha: true,
-            })
-            .front_face_counter_clockwise()
-            .cull_mode_back()
+        let ambient_pipeline = GraphicsPipeline::start()
+            .vertex_input_state(BuffersDefinition::new().vertex::<DummyVertex>())
+            .vertex_shader(ambient_vert.entry_point("main").unwrap(), ())
+            .input_assembly_state(InputAssemblyState::new())
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+            .fragment_shader(ambient_frag.entry_point("main").unwrap(), ())
+            .color_blend_state(
+                ColorBlendState::new(lighting_pass.num_color_attachments()).blend(
+                    AttachmentBlend {
+                        color_op: BlendOp::Add,
+                        color_source: BlendFactor::One,
+                        color_destination: BlendFactor::One,
+                        alpha_op: BlendOp::Max,
+                        alpha_source: BlendFactor::One,
+                        alpha_destination: BlendFactor::One,
+                    },
+                ),
+            )
             .render_pass(lighting_pass.clone())
             .build(device.clone())
-            .unwrap());
+            .unwrap();
 
         System{
             // ...
@@ -680,7 +673,7 @@ impl System {
             .unwrap();
         let mut vp_set_builder = PersistentDescriptorSet::start(vp_layout.clone());
         vp_set_builder.add_buffer(vp_buffer.clone()).unwrap();
-        let vp_set = Arc::new(vp_set_builder.build().unwrap());
+        let vp_set = vp_set_builder.build().unwrap();
 
 
         System{
@@ -700,11 +693,11 @@ impl System {
         render_pass: Arc<RenderPass>,
         viewport: &mut Viewport,
     ) -> (
-        Vec<Arc<dyn FramebufferAbstract>>,
-        Arc<ImageView<Arc<AttachmentImage>>>,
-        Arc<ImageView<Arc<AttachmentImage>>>,
+        Vec<Arc<Framebuffer>>,
+        Arc<ImageView<AttachmentImage>>,
+        Arc<ImageView<AttachmentImage>>,
     ) {
-        let dimensions = images[0].dimensions();
+        let dimensions = images[0].dimensions().width_height();
         viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
         let color_buffer = ImageView::new(
@@ -736,19 +729,17 @@ impl System {
                             .unwrap(),
                     )
                     .unwrap();
-                    Arc::new(
-                        Framebuffer::start(render_pass.clone())
-                            .add(view)
-                            .unwrap()
-                            .add(color_buffer.clone())
-                            .unwrap()
-                            .add(normal_buffer.clone())
-                            .unwrap()
-                            .add(depth_buffer.clone())
-                            .unwrap()
-                            .build()
-                            .unwrap(),
-                    ) as Arc<dyn FramebufferAbstract>
+                    Framebuffer::start(render_pass.clone())
+                        .add(view)
+                        .unwrap()
+                        .add(color_buffer.clone())
+                        .unwrap()
+                        .add(normal_buffer.clone())
+                        .unwrap()
+                        .add(depth_buffer.clone())
+                        .unwrap()
+                        .build()
+                        .unwrap()
                 })
                 .collect::<Vec<_>>(),
             color_buffer.clone(),
@@ -776,7 +767,7 @@ impl System {
             .unwrap();
         let mut vp_set_builder = PersistentDescriptorSet::start(vp_layout.clone());
         vp_set_builder.add_buffer(self.vp_buffer.clone()).unwrap();
-        self.vp_set = Arc::new(vp_set_builder.build().unwrap());
+        self.vp_set = vp_set_builder.build().unwrap();
 
         self.render_stage = RenderStage::Stopped;
     }
@@ -1070,7 +1061,7 @@ impl System {
         model_set_builder
             .add_buffer(model_uniform_subbuffer.clone())
             .unwrap();
-        let model_set = Arc::new(model_set_builder.build().unwrap());
+        let model_set = model_set_builder.build().unwrap();
 
         let vertex_buffer:Arc<dyn BufferAccess + Send + Sync> = CpuAccessibleBuffer::from_iter(
             self.device.clone(),
@@ -1176,7 +1167,7 @@ impl System {
             .unwrap()
             .add_buffer(self.ambient_buffer.clone())
             .unwrap();
-        let ambient_set = Arc::new(ambient_set_builder.build().unwrap());
+        let ambient_set = ambient_set_builder.build().unwrap();
 
         let mut commands = self.commands.take().unwrap();
         commands
@@ -1244,7 +1235,7 @@ impl System {
             .unwrap()
             .add_buffer(directional_uniform_subbuffer.clone())
             .unwrap();
-        let directional_set = Arc::new(directional_set_builder.build().unwrap());
+        let directional_set = directional_set_builder.build().unwrap();
 
         let mut commands = self.commands.take().unwrap();
         commands

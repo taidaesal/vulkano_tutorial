@@ -128,7 +128,7 @@ if recreate_swapchain {
         .unwrap();
     let mut vp_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
     vp_set_builder.add_buffer(new_vp_buffer.clone()).unwrap();
-    vp_set = Arc::new(vp_set_builder.build().unwrap());
+    vp_set = vp_set_builder.build().unwrap();
 
     recreate_swapchain = false;
 }
@@ -144,7 +144,7 @@ let deferred_layout = deferred_pipeline
 let deferred_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
 deferred_set_builder
     .add_buffer(vp_buffer.clone()).unwrap();
-let deferred_set = Arc::new(deferred_set_builder.build().unwrap());
+let deferred_set = deferred_set_builder.build().unwrap();
 ```
 
 To be perfectly honest, this is a small saving. But it's the sort of thing we need to keep in mind if we want to squeeze every bit of bandwidth possible out of our graphics hardware.
@@ -198,7 +198,7 @@ let deferred_layout = deferred_pipeline
     .unwrap();
 let mut vp_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
 vp_set_builder.add_buffer(vp_buffer.clone()).unwrap();
-let mut vp_set = Arc::new(vp_set_builder.build().unwrap());
+let mut vp_set = vp_set_builder.build().unwrap();
 ```
 
 We can re-create it right after we recreate our `vp_buffer` in the swapchain recreation portion of the render loop.
@@ -213,7 +213,7 @@ if recreate_swapchain {
         .unwrap();
     let mut vp_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
     vp_set_builder.add_buffer(new_vp_buffer.clone()).unwrap();
-    vp_set = Arc::new(vp_set_builder.build().unwrap());
+    vp_set = vp_set_builder.build().unwrap();
 
     recreate_swapchain = false;
 }
@@ -230,7 +230,7 @@ let model_uniform_buffer = CpuBufferPool::<deferred_vert::ty::Model_Data>::unifo
 
 The following code can go where we used to declare our deferred sub-buffer and descriptor set.
 ```rust
-let model_uniform_subbuffer = Arc::new({
+let model_uniform_subbuffer = {
     let elapsed = rotation_start.elapsed().as_secs() as f64 + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
     let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
     cube.zero_rotation();
@@ -246,7 +246,7 @@ let model_uniform_subbuffer = Arc::new({
     };
 
     model_uniform_buffer.next(uniform_data).unwrap()
-});
+};
 
 let deferred_layout_model = deferred_pipeline
     .layout()
@@ -258,7 +258,7 @@ let mut model_set_builder =
 model_set_builder
     .add_buffer(model_uniform_subbuffer.clone())
     .unwrap();
-let model_set = Arc::new(model_set_builder.build().unwrap());
+let model_set = model_set_builder.build().unwrap();
 ```
 
 The only real thing to notice is that we used `1` as the argument for the descriptor_set_layout for the first time in this lesson series.

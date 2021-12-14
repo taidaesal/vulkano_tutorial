@@ -39,23 +39,20 @@ If you run your code now you'll see that both triangles show up, exactly as in t
 To tell Vulkan we want to enable face-culling we need to add some commands to our Pipeline.
 
 ```rust
-let pipeline = Arc::new(GraphicsPipeline::start()
-    .vertex_input_single_buffer::<Vertex>()
-    .vertex_shader(vs.main_entry_point(), ())
-    .triangle_list()
-    .viewports_dynamic_scissors_irrelevant(1)
-    .fragment_shader(fs.main_entry_point(), ())
-    .depth_stencil_simple_depth()
-    .front_face_counter_clockwise()
-    .cull_mode_back()
+let pipeline = GraphicsPipeline::start()
+    .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+    .vertex_shader(vs.entry_point("main").unwrap(), ())
+    .input_assembly_state(InputAssemblyState::new())
+    .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+    .fragment_shader(fs.entry_point("main").unwrap(), ())
+    .depth_stencil_state(DepthStencilState::simple_depth_test())
+    .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
     .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
     .build(device.clone())
-    .unwrap());
+    .unwrap();
 ```
 
-`.front_face_counter_clockwise()` is actually the default so we don't really need to list it here. I just like listing it as a way of making everything explicit in the code.
-
-`.cull_mode_back()` Is the code which actually turns on our culling mode. And, yes, there is an option to call the front face instead.
+`.rasterization_state` lets us change a number of settings including depth clamping, whether we want to fill in our polygons, and, most importantly for us right now, if we want to use face-culling. By default, the `RasterizationState` does not have culling enabled, so we turn it on with `.cull_mode(CullMode::Back)`. We can cull everything in front as well if we wish, as well as change the winding order. The default winding order is counter-clockwise. You can change this by adding `.front_face(FrontFace::Clockwise)` after `.cull_mode(..)`
 
 Run the code and we should see the white triangle has disappeared, exactly as expected.
 

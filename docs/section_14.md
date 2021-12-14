@@ -180,7 +180,7 @@ Before making our counter, let's update the current texture in `main.rs` to use 
 `main.rs`
 ```rust
 let (texture, tex_future) = {
-    let (dat, height, width) = mono.text(&now.elapsed().as_secs().to_string());
+    let (dat, height, width) = mono.text("201");
     let dimensions = ImageDimensions::Dim2d {
         width: width,
         height: height,

@@ -38,7 +38,7 @@ Luckily for us, Vulkan makes it very easy to turn on depth testing. Let's take a
 We do depth testing through something called a *depth_stencil*. The way this works is that it's another render attachment (data buffer) that we attach to the render pass we want depth testing for. It might sound like it might be a bit difficult but it's actually pretty simple. Let's look at what our new render pass declaration looks like.
 
 ```rust
-let render_pass = Arc::new(vulkano::single_pass_renderpass!(
+let render_pass = vulkano::single_pass_renderpass!(
     device.clone(),
     attachments: {
         color: {
@@ -58,7 +58,7 @@ let render_pass = Arc::new(vulkano::single_pass_renderpass!(
         color: [color],
         depth_stencil: {depth}
     }
-).unwrap());
+).unwrap();
 ```
 
 As you can see, our `depth` attachment looks a lot like our `color` attachment. There are, however, two things to take note of. First, our `store` value is `DontCare`. This means that our graphics driver can do what it wants with the data, including destroying it if it wishes. This is because this attachment is used within the rendering process by the driver and we're not interested in retrieving it later. The second thing is that our `format` is *not* the same format as our swapchain. This is because is serves as a *stencil* rather than a full-on render target. So we only need a format which can store the depth information.
@@ -70,19 +70,19 @@ Also, just like `color` we could have called `depth` anything but it's most idio
 Our render pass tells Vulkan *what* is available but to tell Vulkan *how to use it* we need to update our pipeline declaration. Thankfully, this is even easier than updating our render pass.
 
 ```rust
-let pipeline = Arc::new(GraphicsPipeline::start()
-    .vertex_input_single_buffer::<Vertex>()
-    .vertex_shader(vs.main_entry_point(), ())
-    .triangle_list()
-    .viewports_dynamic_scissors_irrelevant(1)
-    .fragment_shader(fs.main_entry_point(), ())
-    .depth_stencil_simple_depth()
+let pipeline = GraphicsPipeline::start()
+    .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+    .vertex_shader(vs.entry_point("main").unwrap(), ())
+    .input_assembly_state(InputAssemblyState::new())
+    .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+    .fragment_shader(fs.entry_point("main").unwrap(), ())
+    .depth_stencil_state(DepthStencilState::simple_depth_test())
     .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
     .build(device.clone())
-    .unwrap());
+    .unwrap();
 ```
 
-our only new line is `.depth_stencil_simple_depth()` and it instructs Vulkan to use our attached depth stencil.
+our only new line is `.depth_stencil_state(DepthStencilState::simple_depth_test())` and it instructs Vulkan to use our attached depth stencil. Like with `input_assembly_state` there are more complex things we could do but for now the simplest option is all we need.
 
 #### Framebuffer
 
@@ -93,20 +93,16 @@ let depth_buffer = ImageView::new(
     AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
 )
 .unwrap();
-
 images
     .iter()
     .map(|image| {
-        let view = ImageView::new(image.clone()).unwrap();
-        Arc::new(
-            Framebuffer::start(render_pass.clone())
-                .add(view)
-                .unwrap()
-                .add(depth_buffer.clone())
-                .unwrap()
-                .build()
-                .unwrap(),
-        ) as Arc<dyn FramebufferAbstract>
+        Framebuffer::start(render_pass.clone())
+            .add(view)
+            .unwrap()
+            .add(depth_buffer.clone())
+            .unwrap()
+            .build()
+            .unwrap()
     })
     .collect::<Vec<_>>()
 ```
@@ -121,7 +117,7 @@ fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
-) -> Vec<Arc<dyn FramebufferAbstract>> {
+) -> Vec<Arc<Framebuffer>> {
     // ....
 }
 ```

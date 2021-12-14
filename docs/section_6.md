@@ -133,7 +133,7 @@ let rotation_start = Instant::now();
 ```
 
 ```rust
-let uniform_buffer_subbuffer = Arc::new({
+let uniform_buffer_subbuffer = {
     let elapsed = rotation_start.elapsed().as_secs() as f64 + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
     let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
     let mut model:TMat4<f32> = rotate_normalized_axis(&identity(), elapsed_as_radians as f32 * 50.0, &vec3(0.0, 0.0, 1.0));
@@ -148,7 +148,7 @@ let uniform_buffer_subbuffer = Arc::new({
     };
 
     uniform_buffer.next(uniform_data).unwrap()
-});
+};
 ```
 
 This should be familiar from our lesson on uniforms which is why I'm not pausing to go through it in detail. The only real change is that we're doing rotations around all three axis, so that the cube moves in a more interesting way.
@@ -230,14 +230,14 @@ Note the new datatype in the call we make to `CpuBufferPool`. Our `Ambient_Data`
 Next we can add our sub-buffer creation right under the sub-buffer creation for our MVP data in our main program loop.
 
 ```rust
-let ambient_uniform_subbuffer = Arc::new({
+let ambient_uniform_subbuffer = {
     let uniform_data = fs::ty::Ambient_Data {
         color: ambient_light.color.into(),
         intensity: ambient_light.intensity.into()
     };
 
     ambient_buffer.next(uniform_data).unwrap()
-});
+};
 ```
 
 Nothing dramatic here. We're just creating an instance of `fs::ty::Ambient_Data` and giving it a white light at 100% intensity. We'll play around with these values in a little bit.
@@ -249,7 +249,7 @@ let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
 let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 set_builder.add_buffer(uniform_buffer_subbuffer).unwrap();
 set_builder.add_buffer(ambient_uniform_subbuffer).unwrap();
-let set = Arc::new(set_builder.build().unwrap());
+let set = set_builder.build().unwrap();
 ```
 
 #### Experimenting
@@ -392,14 +392,14 @@ let directional_buffer = CpuBufferPool::<fs::ty::Directional_Light_Data>::unifor
 ```
 
 ```rust
-let directional_uniform_subbuffer = Arc::new({
+let directional_uniform_subbuffer = {
     let uniform_data = fs::ty::Directional_Light_Data {
         position: directional_light.position.into(),
         color: directional_light.color.into()
     };
 
     directional_buffer.next(uniform_data).unwrap()
-});
+};
 ```
 
 ```rust
@@ -408,7 +408,7 @@ let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 set_builder.add_buffer(uniform_buffer_subbuffer).unwrap();
 set_builder.add_buffer(ambient_uniform_subbuffer).unwrap();
 set_builder.add_buffer(directional_uniform_subbuffer).unwrap();
-let set = Arc::new(set_builder.build().unwrap());
+let set = set_builder.build().unwrap();
 ```
 
 #### Running the code

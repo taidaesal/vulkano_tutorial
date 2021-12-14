@@ -175,14 +175,14 @@ let ambient_buffer = CpuBufferPool::<ambient_frag::ty::Ambient_Data>::uniform_bu
 ```
 
 ```rust
-let ambient_uniform_subbuffer = Arc::new({
+let ambient_uniform_subbuffer = {
     let uniform_data = ambient_frag::ty::Ambient_Data {
         color: ambient_light.color.into(),
         intensity: ambient_light.intensity.into()
     };
 
     ambient_buffer.next(uniform_data).unwrap()
-});
+};
 ```
 
 #### Changes to our Pipeline
@@ -190,59 +190,53 @@ let ambient_uniform_subbuffer = Arc::new({
 We'll be making two changes to our graphics pipeline: updating the options for our second graphics pipeline and creating a pipeline for our new ambient shaders.
 
 ```rust
-let directional_pipeline = Arc::new(GraphicsPipeline::start()
-    .vertex_input_single_buffer::<Vertex>()
-    .vertex_shader(directional_vert.main_entry_point(), ())
-    .triangle_list()
-    .viewports_dynamic_scissors_irrelevant(1)
-    .fragment_shader(directional_frag.main_entry_point(), ())
-    .blend_collective(AttachmentBlend {
-        enabled: true,
-        color_op: BlendOp::Add,
-        color_source: BlendFactor::One,
-        color_destination: BlendFactor::One,
-        alpha_op: BlendOp::Max,
-        alpha_source: BlendFactor::One,
-        alpha_destination: BlendFactor::One,
-        mask_red: true,
-        mask_green: true,
-        mask_blue: true,
-        mask_alpha: true,
-    })
-    .front_face_counter_clockwise()
-    .cull_mode_back()
+let directional_pipeline = GraphicsPipeline::start()
+    .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+    .vertex_shader(directional_vert.entry_point("main").unwrap(), ())
+    .input_assembly_state(InputAssemblyState::new())
+    .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+    .fragment_shader(directional_frag.entry_point("main").unwrap(), ())
+    .color_blend_state(ColorBlendState::new(lighting_pass.num_color_attachments()).blend(
+        AttachmentBlend {
+            color_op: BlendOp::Add,
+            color_source: BlendFactor::One,
+            color_destination: BlendFactor::One,
+            alpha_op: BlendOp::Max,
+            alpha_source: BlendFactor::One,
+            alpha_destination: BlendFactor::One,
+        },
+    ))
+    .depth_stencil_state(DepthStencilState::simple_depth_test())
+    .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
     .render_pass(lighting_pass.clone())
     .build(device.clone())
-    .unwrap());
+    .unwrap();
 ```
 
-The new option we added here is `.blend_collective()`. Without a blending function enabled, each pass will overwrite the output of the last pass. With this, the output of each pass is blended together with the output of the previous passes to create the combined output.
+The new option we added here is `.color_blend_state()`. Without a blending function enabled, each pass will overwrite the output of the last pass. With this, the output of each pass is blended together with the output of the previous passes to create the combined output.
 
 ```rust
-let ambient_pipeline = Arc::new(GraphicsPipeline::start()
-    .vertex_input_single_buffer::<Vertex>()
-    .vertex_shader(ambient_vert.main_entry_point(), ())
-    .triangle_list()
-    .viewports_dynamic_scissors_irrelevant(1)
-    .fragment_shader(ambient_frag.main_entry_point(), ())
-    .blend_collective(AttachmentBlend {
-        enabled: true,
-        color_op: BlendOp::Add,
-        color_source: BlendFactor::One,
-        color_destination: BlendFactor::One,
-        alpha_op: BlendOp::Max,
-        alpha_source: BlendFactor::One,
-        alpha_destination: BlendFactor::One,
-        mask_red: true,
-        mask_green: true,
-        mask_blue: true,
-        mask_alpha: true,
-    })
-    .front_face_counter_clockwise()
-    .cull_mode_back()
+let ambient_pipeline = GraphicsPipeline::start()
+    .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+    .vertex_shader(ambient_vert.entry_point("main").unwrap(), ())
+    .input_assembly_state(InputAssemblyState::new())
+    .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+    .fragment_shader(ambient_frag.entry_point("main").unwrap(), ())
+    .color_blend_state(
+        ColorBlendState::new(lighting_pass.num_color_attachments()).blend(AttachmentBlend {
+            color_op: BlendOp::Add,
+            color_source: BlendFactor::One,
+            color_destination: BlendFactor::One,
+            alpha_op: BlendOp::Max,
+            alpha_source: BlendFactor::One,
+            alpha_destination: BlendFactor::One,
+        }),
+    )
+    .depth_stencil_state(DepthStencilState::simple_depth_test())
+    .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
     .render_pass(lighting_pass.clone())
     .build(device.clone())
-    .unwrap());
+    .unwrap();
 ```
 
 This uses the same blending options from our directional pipeline for the same reasons. The only thing I want to highlight here is that we see that both these graphics pipelines use the same sub-pass. This demonstrates the way that not only can we run shaders more than once, we can also have multiple shaders that operate on the same sub-pass.
@@ -266,7 +260,7 @@ let mut deferred_set_builder = PersistentDescriptorSet::start(deferred_layout.cl
 deferred_set_builder
     .add_buffer(uniform_buffer_subbuffer.clone())
     .unwrap();
-let deferred_set = Arc::new(deferred_set_builder.build().unwrap());
+let deferred_set = deferred_set_builder.build().unwrap();
 
 let ambient_layout = ambient_pipeline
     .layout()
@@ -284,7 +278,7 @@ ambient_set_builder
 ambient_set_builder
     .add_buffer(ambient_uniform_subbuffer)
     .unwrap();
-let ambient_set = Arc::new(ambient_set_builder.build().unwrap());
+let ambient_set = ambient_set_builder.build().unwrap();
 ```
 Our sets have been updated as well. We no longer need to provide the ambient sub-buffer to `directional_set`. Instead, we create a third descriptor set to store the inputs we need for our ambient shaders.
 
@@ -361,14 +355,19 @@ We'll need to create directional uniform sub-buffers several times so let's crea
 ```rust
 fn generate_directional_buffer(
     pool: &vulkano::buffer::cpu_pool::CpuBufferPool<directional_frag::ty::Directional_Light_Data>,
-    light: &DirectionalLight
-) -> Arc<vulkano::buffer::cpu_pool::CpuBufferPoolSubbuffer<directional_frag::ty::Directional_Light_Data, Arc<StdMemoryPool>>> {
+    light: &DirectionalLight,
+) -> Arc<
+    vulkano::buffer::cpu_pool::CpuBufferPoolSubbuffer<
+        directional_frag::ty::Directional_Light_Data,
+        Arc<StdMemoryPool>,
+    >,
+> {
     let uniform_data = directional_frag::ty::Directional_Light_Data {
         position: light.position.into(),
-        color: light.color.into()
+        color: light.color.into(),
     };
 
-    Arc::new(pool.next(uniform_data).unwrap())
+    pool.next(uniform_data).unwrap()
 }
 ```
 
@@ -444,7 +443,7 @@ directional_set_builder
 directional_set_builder
     .add_buffer(directional_uniform_subbuffer.clone())
     .unwrap();
-let mut directional_set = Arc::new(directional_set_builder.build().unwrap());
+let mut directional_set = directional_set_builder.build().unwrap();
 ```
 We use our helper function for the first time here to declare our usual `directional_uniform_subbuffer` variable. However, note that both `directional_uniform_subbuffer` and `directional_set` are mutable.
 
@@ -482,7 +481,7 @@ directional_set_builder
 directional_set_builder
     .add_buffer(directional_uniform_subbuffer.clone())
     .unwrap();
-directional_set = Arc::new(directional_set_builder.build().unwrap());
+directional_set = directional_set_builder.build().unwrap();
 
 commands
     .bind_pipeline_graphics(directional_pipeline.clone())
@@ -512,7 +511,7 @@ directional_set_builder
 directional_set_builder
     .add_buffer(directional_uniform_subbuffer.clone())
     .unwrap();
-directional_set = Arc::new(directional_set_builder.build().unwrap());
+directional_set = directional_set_builder.build().unwrap();
 
 commands
     .bind_pipeline_graphics(directional_pipeline.clone())

@@ -6,23 +6,25 @@
 // from code provided by the Vulkano project under
 // the MIT license
 
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::buffer::{CpuBufferPool, TypedBufferAccess};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
+use vulkano::image::attachment::AttachmentImage;
 use vulkano::image::view::ImageView;
-use vulkano::image::{AttachmentImage, SwapchainImage};
+use vulkano::image::{ImageAccess, SwapchainImage};
 use vulkano::instance::Instance;
-use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
-use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
-use vulkano::swapchain;
-use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
-use vulkano::sync;
-use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::pipeline::graphics::depth_stencil::DepthStencilState;
+use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
+use vulkano::pipeline::graphics::rasterization::{CullMode, RasterizationState};
+use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
+use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
+use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
 
 use vulkano_win::VkSurfaceBuild;
@@ -176,10 +178,10 @@ fn main() {
         }
     }
 
-    let deferred_vert = deferred_vert::Shader::load(device.clone()).unwrap();
-    let deferred_frag = deferred_frag::Shader::load(device.clone()).unwrap();
-    let lighting_vert = lighting_vert::Shader::load(device.clone()).unwrap();
-    let lighting_frag = lighting_frag::Shader::load(device.clone()).unwrap();
+    let deferred_vert = deferred_vert::load(device.clone()).unwrap();
+    let deferred_frag = deferred_frag::load(device.clone()).unwrap();
+    let lighting_vert = lighting_vert::load(device.clone()).unwrap();
+    let lighting_frag = lighting_frag::load(device.clone()).unwrap();
 
     let uniform_buffer =
         CpuBufferPool::<deferred_vert::ty::MVP_Data>::uniform_buffer(device.clone());
@@ -188,81 +190,73 @@ fn main() {
     let directional_buffer =
         CpuBufferPool::<lighting_frag::ty::Directional_Light_Data>::uniform_buffer(device.clone());
 
-    let render_pass = Arc::new(
-        vulkano::ordered_passes_renderpass!(device.clone(),
-            attachments: {
-                final_color: {
-                    load: Clear,
-                    store: Store,
-                    format: swapchain.format(),
-                    samples: 1,
-                },
-                color: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::A2B10G10R10_UNORM_PACK32,
-                    samples: 1,
-                },
-                normals: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R16G16B16A16_SFLOAT,
-                    samples: 1,
-                },
-                depth: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::D16_UNORM,
-                    samples: 1,
-                }
+    let render_pass = vulkano::ordered_passes_renderpass!(device.clone(),
+        attachments: {
+            final_color: {
+                load: Clear,
+                store: Store,
+                format: swapchain.format(),
+                samples: 1,
             },
-            passes: [
-                {
-                    color: [color, normals],
-                    depth_stencil: {depth},
-                    input: []
-                },
-                {
-                    color: [final_color],
-                    depth_stencil: {},
-                    input: [color, normals]
-                }
-            ]
-        )
-        .unwrap(),
-    );
+            color: {
+                load: Clear,
+                store: DontCare,
+                format: Format::A2B10G10R10_UNORM_PACK32,
+                samples: 1,
+            },
+            normals: {
+                load: Clear,
+                store: DontCare,
+                format: Format::R16G16B16A16_SFLOAT,
+                samples: 1,
+            },
+            depth: {
+                load: Clear,
+                store: DontCare,
+                format: Format::D16_UNORM,
+                samples: 1,
+            }
+        },
+        passes: [
+            {
+                color: [color, normals],
+                depth_stencil: {depth},
+                input: []
+            },
+            {
+                color: [final_color],
+                depth_stencil: {},
+                input: [color, normals]
+            }
+        ]
+    )
+    .unwrap();
 
     let deferred_pass = Subpass::from(render_pass.clone(), 0).unwrap();
     let lighting_pass = Subpass::from(render_pass.clone(), 1).unwrap();
 
-    let deferred_pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input_single_buffer::<Vertex>()
-            .vertex_shader(deferred_vert.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .fragment_shader(deferred_frag.main_entry_point(), ())
-            .depth_stencil_simple_depth()
-            .front_face_counter_clockwise()
-            .cull_mode_back()
-            .render_pass(deferred_pass.clone())
-            .build(device.clone())
-            .unwrap(),
-    );
+    let deferred_pipeline = GraphicsPipeline::start()
+        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+        .vertex_shader(deferred_vert.entry_point("main").unwrap(), ())
+        .input_assembly_state(InputAssemblyState::new())
+        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+        .fragment_shader(deferred_frag.entry_point("main").unwrap(), ())
+        .depth_stencil_state(DepthStencilState::simple_depth_test())
+        .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
+        .render_pass(deferred_pass)
+        .build(device.clone())
+        .unwrap();
 
-    let lighting_pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input_single_buffer::<Vertex>()
-            .vertex_shader(lighting_vert.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .fragment_shader(lighting_frag.main_entry_point(), ())
-            .front_face_counter_clockwise()
-            .cull_mode_back()
-            .render_pass(lighting_pass.clone())
-            .build(device.clone())
-            .unwrap(),
-    );
+    let lighting_pipeline = GraphicsPipeline::start()
+        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+        .vertex_shader(lighting_vert.entry_point("main").unwrap(), ())
+        .input_assembly_state(InputAssemblyState::new())
+        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+        .fragment_shader(lighting_frag.entry_point("main").unwrap(), ())
+        .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
+        .render_pass(lighting_pass)
+        .build(device.clone())
+        .unwrap();
 
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
         device.clone(),
@@ -546,7 +540,7 @@ fn main() {
                 1f32.into(),
             ];
 
-            let uniform_buffer_subbuffer = Arc::new({
+            let uniform_buffer_subbuffer = {
                 let elapsed = rotation_start.elapsed().as_secs() as f64
                     + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
                 let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
@@ -574,25 +568,25 @@ fn main() {
                 };
 
                 uniform_buffer.next(uniform_data).unwrap()
-            });
+            };
 
-            let ambient_uniform_subbuffer = Arc::new({
+            let ambient_uniform_subbuffer = {
                 let uniform_data = lighting_frag::ty::Ambient_Data {
                     color: ambient_light.color.into(),
                     intensity: ambient_light.intensity.into(),
                 };
 
                 ambient_buffer.next(uniform_data).unwrap()
-            });
+            };
 
-            let directional_uniform_subbuffer = Arc::new({
+            let directional_uniform_subbuffer = {
                 let uniform_data = lighting_frag::ty::Directional_Light_Data {
                     position: directional_light.position.into(),
                     color: directional_light.color.into(),
                 };
 
                 directional_buffer.next(uniform_data).unwrap()
-            });
+            };
 
             let deferred_layout = deferred_pipeline
                 .layout()
@@ -603,7 +597,7 @@ fn main() {
             deferred_set_builder
                 .add_buffer(uniform_buffer_subbuffer.clone())
                 .unwrap();
-            let deferred_set = Arc::new(deferred_set_builder.build().unwrap());
+            let deferred_set = deferred_set_builder.build().unwrap();
 
             let lighting_layout = lighting_pipeline
                 .layout()
@@ -626,7 +620,7 @@ fn main() {
             lighting_set_builder
                 .add_buffer(directional_uniform_subbuffer)
                 .unwrap();
-            let lighting_set = Arc::new(lighting_set_builder.build().unwrap());
+            let lighting_set = lighting_set_builder.build().unwrap();
 
             let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary(
                 device.clone(),
@@ -703,11 +697,11 @@ fn window_size_dependent_setup(
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> (
-    Vec<Arc<dyn FramebufferAbstract>>,
-    Arc<ImageView<Arc<AttachmentImage>>>,
-    Arc<ImageView<Arc<AttachmentImage>>>,
+    Vec<Arc<Framebuffer>>,
+    Arc<ImageView<AttachmentImage>>,
+    Arc<ImageView<AttachmentImage>>,
 ) {
-    let dimensions = images[0].dimensions();
+    let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
     let color_buffer = ImageView::new(
@@ -739,19 +733,17 @@ fn window_size_dependent_setup(
                         .unwrap(),
                 )
                 .unwrap();
-                Arc::new(
-                    Framebuffer::start(render_pass.clone())
-                        .add(view)
-                        .unwrap()
-                        .add(color_buffer.clone())
-                        .unwrap()
-                        .add(normal_buffer.clone())
-                        .unwrap()
-                        .add(depth_buffer.clone())
-                        .unwrap()
-                        .build()
-                        .unwrap(),
-                ) as Arc<dyn FramebufferAbstract>
+                Framebuffer::start(render_pass.clone())
+                    .add(view)
+                    .unwrap()
+                    .add(color_buffer.clone())
+                    .unwrap()
+                    .add(normal_buffer.clone())
+                    .unwrap()
+                    .add(depth_buffer.clone())
+                    .unwrap()
+                    .build()
+                    .unwrap()
             })
             .collect::<Vec<_>>(),
         color_buffer.clone(),

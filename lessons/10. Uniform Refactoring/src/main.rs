@@ -9,25 +9,29 @@
 mod model;
 mod obj_loader;
 
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::buffer::{CpuBufferPool, TypedBufferAccess};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
+use vulkano::image::attachment::AttachmentImage;
 use vulkano::image::view::ImageView;
-use vulkano::image::{AttachmentImage, SwapchainImage};
+use vulkano::image::{ImageAccess, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::memory::pool::StdMemoryPool;
-use vulkano::pipeline::blend::{AttachmentBlend, BlendFactor, BlendOp};
-use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
-use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
-use vulkano::swapchain;
-use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
-use vulkano::sync;
-use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::pipeline::graphics::color_blend::{
+    AttachmentBlend, BlendFactor, BlendOp, ColorBlendState,
+};
+use vulkano::pipeline::graphics::depth_stencil::DepthStencilState;
+use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
+use vulkano::pipeline::graphics::rasterization::{CullMode, RasterizationState};
+use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
+use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
+use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
 
 use vulkano_win::VkSurfaceBuild;
@@ -190,12 +194,12 @@ fn main() {
             .unwrap()
     };
 
-    let deferred_vert = deferred_vert::Shader::load(device.clone()).unwrap();
-    let deferred_frag = deferred_frag::Shader::load(device.clone()).unwrap();
-    let directional_vert = directional_vert::Shader::load(device.clone()).unwrap();
-    let directional_frag = directional_frag::Shader::load(device.clone()).unwrap();
-    let ambient_vert = ambient_vert::Shader::load(device.clone()).unwrap();
-    let ambient_frag = ambient_frag::Shader::load(device.clone()).unwrap();
+    let deferred_vert = deferred_vert::load(device.clone()).unwrap();
+    let deferred_frag = deferred_frag::load(device.clone()).unwrap();
+    let directional_vert = directional_vert::load(device.clone()).unwrap();
+    let directional_frag = directional_frag::load(device.clone()).unwrap();
+    let ambient_vert = ambient_vert::load(device.clone()).unwrap();
+    let ambient_frag = ambient_frag::load(device.clone()).unwrap();
 
     let vp_buffer = CpuAccessibleBuffer::from_data(
         device.clone(),
@@ -217,121 +221,106 @@ fn main() {
             device.clone(),
         );
 
-    let render_pass = Arc::new(
-        vulkano::ordered_passes_renderpass!(device.clone(),
-            attachments: {
-                final_color: {
-                    load: Clear,
-                    store: Store,
-                    format: swapchain.format(),
-                    samples: 1,
-                },
-                color: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::A2B10G10R10_UNORM_PACK32,
-                    samples: 1,
-                },
-                normals: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R16G16B16A16_SFLOAT,
-                    samples: 1,
-                },
-                depth: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::D16_UNORM,
-                    samples: 1,
-                }
+    let render_pass = vulkano::ordered_passes_renderpass!(device.clone(),
+        attachments: {
+            final_color: {
+                load: Clear,
+                store: Store,
+                format: swapchain.format(),
+                samples: 1,
             },
-            passes: [
-                {
-                    color: [color, normals],
-                    depth_stencil: {depth},
-                    input: []
-                },
-                {
-                    color: [final_color],
-                    depth_stencil: {},
-                    input: [color, normals]
-                }
-            ]
-        )
-        .unwrap(),
-    );
+            color: {
+                load: Clear,
+                store: DontCare,
+                format: Format::A2B10G10R10_UNORM_PACK32,
+                samples: 1,
+            },
+            normals: {
+                load: Clear,
+                store: DontCare,
+                format: Format::R16G16B16A16_SFLOAT,
+                samples: 1,
+            },
+            depth: {
+                load: Clear,
+                store: DontCare,
+                format: Format::D16_UNORM,
+                samples: 1,
+            }
+        },
+        passes: [
+            {
+                color: [color, normals],
+                depth_stencil: {depth},
+                input: []
+            },
+            {
+                color: [final_color],
+                depth_stencil: {},
+                input: [color, normals]
+            }
+        ]
+    )
+    .unwrap();
 
     let deferred_pass = Subpass::from(render_pass.clone(), 0).unwrap();
     let lighting_pass = Subpass::from(render_pass.clone(), 1).unwrap();
 
-    let deferred_pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input_single_buffer::<NormalVertex>()
-            .vertex_shader(deferred_vert.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .fragment_shader(deferred_frag.main_entry_point(), ())
-            .depth_stencil_simple_depth()
-            .front_face_counter_clockwise()
-            .cull_mode_back()
-            .render_pass(deferred_pass.clone())
-            .build(device.clone())
-            .unwrap(),
-    );
+    let deferred_pipeline = GraphicsPipeline::start()
+        .vertex_input_state(BuffersDefinition::new().vertex::<NormalVertex>())
+        .vertex_shader(deferred_vert.entry_point("main").unwrap(), ())
+        .input_assembly_state(InputAssemblyState::new())
+        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+        .fragment_shader(deferred_frag.entry_point("main").unwrap(), ())
+        .depth_stencil_state(DepthStencilState::simple_depth_test())
+        .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
+        .render_pass(deferred_pass.clone())
+        .build(device.clone())
+        .unwrap();
 
-    let directional_pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input_single_buffer::<DummyVertex>()
-            .vertex_shader(directional_vert.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .fragment_shader(directional_frag.main_entry_point(), ())
-            .blend_collective(AttachmentBlend {
-                enabled: true,
+    let directional_pipeline = GraphicsPipeline::start()
+        .vertex_input_state(BuffersDefinition::new().vertex::<DummyVertex>())
+        .vertex_shader(directional_vert.entry_point("main").unwrap(), ())
+        .input_assembly_state(InputAssemblyState::new())
+        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+        .fragment_shader(directional_frag.entry_point("main").unwrap(), ())
+        .color_blend_state(
+            ColorBlendState::new(lighting_pass.num_color_attachments()).blend(AttachmentBlend {
                 color_op: BlendOp::Add,
                 color_source: BlendFactor::One,
                 color_destination: BlendFactor::One,
                 alpha_op: BlendOp::Max,
                 alpha_source: BlendFactor::One,
                 alpha_destination: BlendFactor::One,
-                mask_red: true,
-                mask_green: true,
-                mask_blue: true,
-                mask_alpha: true,
-            })
-            .front_face_counter_clockwise()
-            .cull_mode_back()
-            .render_pass(lighting_pass.clone())
-            .build(device.clone())
-            .unwrap(),
-    );
+            }),
+        )
+        .depth_stencil_state(DepthStencilState::simple_depth_test())
+        .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
+        .render_pass(lighting_pass.clone())
+        .build(device.clone())
+        .unwrap();
 
-    let ambient_pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input_single_buffer::<DummyVertex>()
-            .vertex_shader(ambient_vert.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .fragment_shader(ambient_frag.main_entry_point(), ())
-            .blend_collective(AttachmentBlend {
-                enabled: true,
+    let ambient_pipeline = GraphicsPipeline::start()
+        .vertex_input_state(BuffersDefinition::new().vertex::<DummyVertex>())
+        .vertex_shader(ambient_vert.entry_point("main").unwrap(), ())
+        .input_assembly_state(InputAssemblyState::new())
+        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+        .fragment_shader(ambient_frag.entry_point("main").unwrap(), ())
+        .color_blend_state(
+            ColorBlendState::new(lighting_pass.num_color_attachments()).blend(AttachmentBlend {
                 color_op: BlendOp::Add,
                 color_source: BlendFactor::One,
                 color_destination: BlendFactor::One,
                 alpha_op: BlendOp::Max,
                 alpha_source: BlendFactor::One,
                 alpha_destination: BlendFactor::One,
-                mask_red: true,
-                mask_green: true,
-                mask_blue: true,
-                mask_alpha: true,
-            })
-            .front_face_counter_clockwise()
-            .cull_mode_back()
-            .render_pass(lighting_pass.clone())
-            .build(device.clone())
-            .unwrap(),
-    );
+            }),
+        )
+        .depth_stencil_state(DepthStencilState::simple_depth_test())
+        .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
+        .render_pass(lighting_pass.clone())
+        .build(device.clone())
+        .unwrap();
 
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
         device.clone(),
@@ -371,7 +360,7 @@ fn main() {
         .unwrap();
     let mut vp_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
     vp_set_builder.add_buffer(vp_buffer.clone()).unwrap();
-    let mut vp_set = Arc::new(vp_set_builder.build().unwrap());
+    let mut vp_set = vp_set_builder.build().unwrap();
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -438,7 +427,7 @@ fn main() {
                     .unwrap();
                 let mut vp_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
                 vp_set_builder.add_buffer(new_vp_buffer.clone()).unwrap();
-                vp_set = Arc::new(vp_set_builder.build().unwrap());
+                vp_set = vp_set_builder.build().unwrap();
 
                 recreate_swapchain = false;
             }
@@ -464,7 +453,7 @@ fn main() {
                 1f32.into(),
             ];
 
-            let model_uniform_subbuffer = Arc::new({
+            let model_uniform_subbuffer = {
                 let elapsed = rotation_start.elapsed().as_secs() as f64
                     + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
                 let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
@@ -481,16 +470,16 @@ fn main() {
                 };
 
                 model_uniform_buffer.next(uniform_data).unwrap()
-            });
+            };
 
-            let ambient_uniform_subbuffer = Arc::new({
+            let ambient_uniform_subbuffer = {
                 let uniform_data = ambient_frag::ty::Ambient_Data {
                     color: ambient_light.color.into(),
                     intensity: ambient_light.intensity.into(),
                 };
 
                 ambient_buffer.next(uniform_data).unwrap()
-            });
+            };
 
             let deferred_layout_model = deferred_pipeline
                 .layout()
@@ -502,7 +491,7 @@ fn main() {
             model_set_builder
                 .add_buffer(model_uniform_subbuffer.clone())
                 .unwrap();
-            let model_set = Arc::new(model_set_builder.build().unwrap());
+            let model_set = model_set_builder.build().unwrap();
 
             let ambient_layout = ambient_pipeline
                 .layout()
@@ -517,7 +506,7 @@ fn main() {
                 .unwrap()
                 .add_buffer(ambient_uniform_subbuffer.clone())
                 .unwrap();
-            let ambient_set = Arc::new(ambient_set_builder.build().unwrap());
+            let ambient_set = ambient_set_builder.build().unwrap();
 
             let directional_uniform_subbuffer =
                 generate_directional_buffer(&directional_buffer, &directional_light);
@@ -535,7 +524,7 @@ fn main() {
                 .unwrap()
                 .add_buffer(directional_uniform_subbuffer.clone())
                 .unwrap();
-            let directional_set = Arc::new(directional_set_builder.build().unwrap());
+            let directional_set = directional_set_builder.build().unwrap();
 
             let mut commands = AutoCommandBufferBuilder::primary(
                 device.clone(),
@@ -627,7 +616,7 @@ fn generate_directional_buffer(
         color: light.color.into(),
     };
 
-    Arc::new(pool.next(uniform_data).unwrap())
+    pool.next(uniform_data).unwrap()
 }
 
 /// This method is called once during initialization, then again whenever the window is resized
@@ -638,11 +627,11 @@ fn window_size_dependent_setup(
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> (
-    Vec<Arc<dyn FramebufferAbstract>>,
-    Arc<ImageView<Arc<AttachmentImage>>>,
-    Arc<ImageView<Arc<AttachmentImage>>>,
+    Vec<Arc<Framebuffer>>,
+    Arc<ImageView<AttachmentImage>>,
+    Arc<ImageView<AttachmentImage>>,
 ) {
-    let dimensions = images[0].dimensions();
+    let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
     let color_buffer = ImageView::new(
@@ -674,19 +663,17 @@ fn window_size_dependent_setup(
                         .unwrap(),
                 )
                 .unwrap();
-                Arc::new(
-                    Framebuffer::start(render_pass.clone())
-                        .add(view)
-                        .unwrap()
-                        .add(color_buffer.clone())
-                        .unwrap()
-                        .add(normal_buffer.clone())
-                        .unwrap()
-                        .add(depth_buffer.clone())
-                        .unwrap()
-                        .build()
-                        .unwrap(),
-                ) as Arc<dyn FramebufferAbstract>
+                Framebuffer::start(render_pass.clone())
+                    .add(view)
+                    .unwrap()
+                    .add(color_buffer.clone())
+                    .unwrap()
+                    .add(normal_buffer.clone())
+                    .unwrap()
+                    .add(depth_buffer.clone())
+                    .unwrap()
+                    .build()
+                    .unwrap()
             })
             .collect::<Vec<_>>(),
         color_buffer.clone(),

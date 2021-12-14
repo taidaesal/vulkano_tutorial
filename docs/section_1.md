@@ -14,20 +14,21 @@ The first thing we'll do is creating our `Cargo.toml` file. The dependencies lis
 ```toml
 [package]
 name = "example_project"
-version = "0.26.0"
+version = "0.27.1"
 authors = ["your_name"]
 edition = "2021"
 
 [dependencies]
-vulkano = "0.26.0"
+vulkano = "0.27.1"
 winit = "0.25.0"
-vulkano-win = "0.26.0"
-vulkano-shaders = "0.26.0"
+vulkano-win = "0.27.1"
+vulkano-shaders = "0.27.1"
+
 ```
 
 Let's go over the dependencies one by one.
 ```toml
-vulkano = "0.26.0"
+vulkano = "0.27.1"
 ```
 This is the main library ("crate" in Rust-speak) that we'll be using. This crate wraps the Vulkan API with its own Rust API so that we can call it from our application. We could use the Vulkan API directly if we really wanted to but that would be far more difficult than necessary as well as producing ugly code that doesn't follow Rust idioms. This is because the main Vulkan API is in C and can only be interacted with using Rust's Foreign Function Interface (FFI) mechanism. Although Rust is designed to interface with C when necessary, why would we do that when we have a lovely crate to wrap it all up in a nice Rusty bow for us?
 
@@ -42,13 +43,13 @@ This crate solves a problem that surprises a lot of people learning about graphi
 The key thing to keep in mind is that Vulkan is how we use our *hardware* (usually a graphics card, sometimes integrated rendering hardware) to turn data into graphical output. However, the actual user interface (UI) is a bit of *software* that's provided by the host operating system. Vulkan, like OpenGL before it, is explicitly operating system agnostic which is just a fancy way of saying that it will never contain code that will only work on Windows or Linux or any other single platform. To interact with the operating system itself and do things like open windows or get user input we need to use a second crate.
 
 ```toml
-vulkano-win = "0.26.0"
+vulkano-win = "0.27.1"
 ```
 
 This is the other part of our "how do we get Vulkan to talk to our UI" problem. The `winit` crate lets us open a window for whatever operating system we're using but there still needs to be a connection between our new window and our graphics API. This crate is a small bit of code that lets us go "hey, you can put your graphics in this window." It would be possible to roll this functionality into the same crate as the window-handling code and this is the strategy used by a number of other libraries you might find out there; however, the `winit` maintainers have kept a tight focus on their project scope.
 
 ```toml
-vulkano-shaders = "0.26.0"
+vulkano-shaders = "0.27.1"
 ```
 
 I'm kind of cheating by listing this dependency in this section since we won't be using it for this lesson, but we will be using it in every other one so we might as well talk about it now.
@@ -69,14 +70,12 @@ use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, Subp
 use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::image::view::ImageView;
-use vulkano::image::SwapchainImage;
+use vulkano::image::{ImageAccess, SwapchainImage};
 use vulkano::instance::Instance;
-use vulkano::pipeline::viewport::Viewport;
-use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass};
-use vulkano::swapchain;
-use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
-use vulkano::sync;
-use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::pipeline::graphics::viewport::Viewport;
+use vulkano::render_pass::{Framebuffer, RenderPass};
+use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
 
 use vulkano_win::VkSurfaceBuild;
@@ -222,7 +221,7 @@ Now we come to one of the most important parts of any Vulkan program, the `Rende
 To keep it simple, this is the part of our code where we tell the graphics hardware where it can expect to find input information and where it can store output. Each of these data sources are called "framebuffer attachments" in Vulkan-speak and we can string multiple such attachments together to create complex multi-stage rendering systems. In a multi-stage rendering system the graphics hardware goes through "subpasses" where it executes a shader on a set of data. This will be easier to visualize in the next lesson when we add a `GraphicsPipeline` and start rendering something.
 
 ```rust
-let render_pass = Arc::new(vulkano::single_pass_renderpass!(
+let render_pass = vulkano::single_pass_renderpass!(
     device.clone(),
     attachments: {
         color: {
@@ -236,7 +235,8 @@ let render_pass = Arc::new(vulkano::single_pass_renderpass!(
         color: [color],
         depth_stencil: {}
     }
-).unwrap());
+)
+.unwrap();
 ```
 
 You see here that we've declared a single framebuffer attachment and named it `color`. In reality, we could name it pretty much anything we'd like but it's idiomatic to name your attachments after their function. This attachment is a color type attachment so we just name it that.
@@ -280,25 +280,22 @@ fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
-) -> Vec<Arc<dyn FramebufferAbstract>> {
-    let dimensions = images[0].dimensions();
+) -> Vec<Arc<Framebuffer>> {
+    let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
     images
         .iter()
         .map(|image| {
             let view = ImageView::new(image.clone()).unwrap();
-            Arc::new(
-                Framebuffer::start(render_pass.clone())
-                    .add(view)
-                    .unwrap()
-                    .build()
-                    .unwrap(),
-            ) as Arc<dyn FramebufferAbstract>
+            Framebuffer::start(render_pass.clone())
+                .add(view)
+                .unwrap()
+                .build()
+                .unwrap()
         })
         .collect::<Vec<_>>()
 }
-
 ```
 This helper function is stolen wholesale from the Vulkano examples page and won't be explored here. For our purposes we can just accept it without changes.
 

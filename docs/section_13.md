@@ -149,7 +149,7 @@ let's go bit-by-bit
 let png_bytes = include_bytes!("./textures/diamond.png").to_vec();
 ```
 
-Here we use a macro provided by the Rust standard library, `include_bytes!`, to read in our texture file. We load it as a byte array that has the type `&'static [u8; N]`. This means that the data will be added to our executable. Doing this is fine for our learning app but textures will need to be loaded dynamically.
+Here we use a macro provided by the Rust standard library, `include_bytes!`, to read in our texture file. We load it as a byte array that has the type `&'static [u8; N]`. This means that the data will be added to our executable. Doing this is fine for our learning app but textures will need to be loaded dynamically in production apps.
 
 ```rust
 let cursor = Cursor::new(png_bytes);
@@ -240,7 +240,7 @@ set_builder
     .unwrap()
     .add_sampled_image(texture.clone(), sampler.clone())
     .unwrap();
-let set = Arc::new(set_builder.build().unwrap());
+let set = set_builder.build().unwrap();
 ```
 
 ## Shaders

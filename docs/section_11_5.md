@@ -99,22 +99,20 @@ pub struct System {
 impl System {
     pub fn new(event_loop: &EventLoop<()>) -> System  {
         // ...
-        let ambient_vert = ambient_vert::Shader::load(device.clone()).unwrap();
-        let ambient_frag = ambient_frag::Shader::load(device.clone()).unwrap();
-        let light_obj_vert = light_obj_vert::Shader::load(device.clone()).unwrap();
-        let light_obj_frag = light_obj_frag::Shader::load(device.clone()).unwrap();
+        let ambient_vert = ambient_vert::load(device.clone()).unwrap();
+        let ambient_frag = ambient_frag::load(device.clone()).unwrap();
+        let light_obj_vert = light_obj_vert::load(device.clone()).unwrap();
+        let light_obj_frag = light_obj_frag::load(device.clone()).unwrap();
         // ...
-        let light_obj_pipeline = Arc::new(GraphicsPipeline::start()
-            .vertex_input_single_buffer::<ColoredVertex>()
-            .vertex_shader(light_obj_vert.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .fragment_shader(light_obj_frag.main_entry_point(), ())
-            .front_face_counter_clockwise()
-            .cull_mode_back()
+        let light_obj_pipeline = GraphicsPipeline::start()
+            .vertex_input_state(BuffersDefinition::new().vertex::<ColoredVertex>())
+            .vertex_shader(light_obj_vert.entry_point("main").unwrap(), ())
+            .input_assembly_state(InputAssemblyState::new())
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+            .fragment_shader(light_obj_frag.entry_point("main").unwrap(), ())
             .render_pass(lighting_pass.clone())
             .build(device.clone())
-            .unwrap());
+            .unwrap();
         // ...
         System{
             // ...
@@ -234,7 +232,7 @@ impl System {
         let mut model = Model::new("data/models/sphere.obj").color(directional_light.color).uniform_scale_factor(0.2).build();
         model.translate(directional_light.get_position());
 
-        let model_uniform_subbuffer = Arc::new({
+        let model_uniform_subbuffer = {
             let (model_mat, normal_mat) = model.model_matrices();
 
             let uniform_data = deferred_vert::ty::Model_Data {
@@ -243,7 +241,7 @@ impl System {
             };
 
             self.model_uniform_buffer.next(uniform_data).unwrap()
-        });
+        };
 
         let deferred_layout = self
             .light_obj_pipeline
@@ -254,7 +252,7 @@ impl System {
         let mut model_set_builder =
             PersistentDescriptorSet::start(deferred_layout.clone());
         model_set_builder.add_buffer(model_uniform_subbuffer.clone()).unwrap();
-        let model_set = Arc::new(model_set_builder.build().unwrap());
+        let model_set = model_set_builder.build().unwrap();
 
         let vertex_buffer = CpuAccessibleBuffer::from_iter(
             self.device.clone(),
@@ -486,7 +484,7 @@ The answer is simple, in the code above we forgot to enable depth-testing when w
 impl System {
     pub fn new(event_loop: &EventLoop<()>) -> System  {
         // ...
-        let render_pass = Arc::new(vulkano::ordered_passes_renderpass!(device.clone(),
+        let render_pass = vulkano::ordered_passes_renderpass!(device.clone(),
             // ...
             passes: [
                 // ...
@@ -496,26 +494,25 @@ impl System {
                     input: [color, normals]
                 }
             ]
-        ).unwrap());
+        ).unwrap();
         // ...
-        let light_obj_pipeline = Arc::new(GraphicsPipeline::start()
-            .vertex_input_single_buffer::<ColoredVertex>()
-            .vertex_shader(light_obj_vert.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .fragment_shader(light_obj_frag.main_entry_point(), ())
-            .depth_stencil_simple_depth()
-            .front_face_counter_clockwise()
-            .cull_mode_back()
+        let light_obj_pipeline = GraphicsPipeline::start()
+            .vertex_input_state(BuffersDefinition::new().vertex::<ColoredVertex>())
+            .vertex_shader(light_obj_vert.entry_point("main").unwrap(), ())
+            .input_assembly_state(InputAssemblyState::new())
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+            .fragment_shader(light_obj_frag.entry_point("main").unwrap(), ())
+            .depth_stencil_state(DepthStencilState::simple_depth_test())
+            .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
             .render_pass(lighting_pass.clone())
             .build(device.clone())
-            .unwrap());
+            .unwrap();
         // ...
     }
 }
 ```
 
-We don't have to declare anything new or wrestle with buffer configuration or anything like that. We just needed to tell Vulkan that our second subpass will be using the depth stencil and enable `depth_stencil_simple_depth` for our light object pipeline. 
+We don't have to declare anything new or wrestle with buffer configuration or anything like that. We just needed to tell Vulkan that our second subpass will be using the depth stencil and enable `depth_stencil_state` for our light object pipeline.  We'll also go ahead and add in the `rasterization_state` call as well even though face culling is a trivial performance consideration for this feature.
 
 Run the code and see for yourself. With these few minor tweaks, our light object is being hidden when it goes behind the sphere.
 

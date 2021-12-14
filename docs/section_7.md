@@ -21,7 +21,7 @@ It might be best to use a diagram to explain the program flow we're going for.
 
 ![diagram showing the flow of data through two render sub-passes](./imgs/7/multi_pass_diagram.png)
 
-The first part of the process is pretty much the same as in the last lesson: we gather up all the geometry, color, and MVP matrix data and feed it into a shader. The difference is where the data produced by our first set of shaders goes. In our last example, our shaders transformed the input into a format ready for display and saved it to an attachment which was immediately shown to the user. However, here, we output data that's only partly processed into temporary *intermediary buffers*. As far as I know, that's not a technical term but it's what I call them to help underscore the fact that they store data that is *in progress* and not a final result. The second pass is where we take the incomplete data stored in our `color` and `normal` attachments and turn it into data that can be presented to the user. In a sense it can be thought of as cutting our shaders from last time in half.
+The first part of the process is pretty much the same as in the last lesson: we gather up all the geometry, color, and MVP matrix data and feed it into a shader. The difference is where the data produced by our first set of shaders goes. In our last example, our shaders transformed the input into a format ready for display and saved it to an attachment which was immediately shown to the user. This time, however, we output data that's only partly processed into temporary *intermediary buffers*. As far as I know, that's not a technical term but it's what I call them to help underscore the fact that they store data that is *in progress* and not a final result. The second pass is where we take the incomplete data stored in our `color` and `normal` attachments and turn it into data that can be presented to the user. In a sense it can be thought of as cutting our shaders from last time in half.
 
 It's reasonable to ask why we're doing this since, after all, we just got done writing shaders that can do lighting for our scene and it was a lot simpler and easier to understand than this is shaping up to be. The key to understanding why we need to do this is the problem brought up at the end of the last lesson: by breaking our rendering into multiple steps we introduce flexibility that just can't exist in a single-pass render system.
 
@@ -36,8 +36,7 @@ Since there are a number of things that we'll have to discuss when it comes to a
 I've hinted before that you can define more than one pass in a `Renderpass` declaration and now it's time to make good on that promise. It is fair, in my opinion, to call the `Renderpass` code the most important part of this lesson, as this is where we will define our new structures as well as how they relate to each other.
 
 ```rust
-let render_pass = Arc::new(
-    vulkano::ordered_passes_renderpass!(device.clone(),
+let render_pass = vulkano::ordered_passes_renderpass!(device.clone(),
         attachments: {
             final_color: {
                 load: Clear,
@@ -77,8 +76,7 @@ let render_pass = Arc::new(
             }
         ]
     )
-    .unwrap(),
-);
+    .unwrap();
 ```
 
 Lot to take in here but luckily there isn't much new syntax so we can move through it bit by bit.
@@ -173,9 +171,9 @@ fn window_size_dependent_setup(
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> (
-    Vec<Arc<dyn FramebufferAbstract>>,
-    Arc<ImageView<Arc<AttachmentImage>>>,
-    Arc<ImageView<Arc<AttachmentImage>>>,
+    Vec<Arc<Framebuffer>>,
+    Arc<ImageView<AttachmentImage>>,
+    Arc<ImageView<AttachmentImage>>,
 ) {
   // ...
     (
@@ -188,19 +186,17 @@ fn window_size_dependent_setup(
                         .unwrap(),
                 )
                 .unwrap();
-                Arc::new(
-                    Framebuffer::start(render_pass.clone())
-                        .add(view)
-                        .unwrap()
-                        .add(color_buffer.clone())
-                        .unwrap()
-                        .add(normal_buffer.clone())
-                        .unwrap()
-                        .add(depth_buffer.clone())
-                        .unwrap()
-                        .build()
-                        .unwrap(),
-                ) as Arc<dyn FramebufferAbstract>
+                Framebuffer::start(render_pass.clone())
+                    .add(view)
+                    .unwrap()
+                    .add(color_buffer.clone())
+                    .unwrap()
+                    .add(normal_buffer.clone())
+                    .unwrap()
+                    .add(depth_buffer.clone())
+                    .unwrap()
+                    .build()
+                    .unwrap()
             })
             .collect::<Vec<_>>(),
         color_buffer.clone(),
@@ -273,45 +269,43 @@ mod lighting_frag {
     }
 }
 
-let deferred_vert = deferred_vert::Shader::load(device.clone()).unwrap();
-let deferred_frag = deferred_frag::Shader::load(device.clone()).unwrap();
-let lighting_vert = lighting_vert::Shader::load(device.clone()).unwrap();
-let lighting_frag = lighting_frag::Shader::load(device.clone()).unwrap();
+let deferred_vert = deferred_vert::load(device.clone()).unwrap();
+let deferred_frag = deferred_frag::load(device.clone()).unwrap();
+let lighting_vert = lighting_vert::load(device.clone()).unwrap();
+let lighting_frag = lighting_frag::load(device.clone()).unwrap();
 ```
 
 We won't talk about the contents of our shaders until a later section, but we need to know what our new shaders are called. We also take advantage of the `path` argument to load external shader files rather than writing them all in our source. We could have continued in the old way and it would have worked just fine, but now that we're introducing multiple sets of shaders this helps keep everything understandable.
 
 But now let's look at the pipeline for the first sub-pass.
 ```rust
-let deferred_pipeline = Arc::new(GraphicsPipeline::start()
-    .vertex_input_single_buffer::<Vertex>()
-    .vertex_shader(deferred_vert.main_entry_point(), ())
-    .triangle_list()
-    .viewports_dynamic_scissors_irrelevant(1)
-    .fragment_shader(deferred_frag.main_entry_point(), ())
-    .depth_stencil_simple_depth()
-    .front_face_counter_clockwise()
-    .cull_mode_back()
-    .render_pass(deferred_pass.clone())
+let deferred_pipeline = GraphicsPipeline::start()
+    .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+    .vertex_shader(deferred_vert.entry_point("main").unwrap(), ())
+    .input_assembly_state(InputAssemblyState::new())
+    .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+    .fragment_shader(deferred_frag.entry_point("main").unwrap(), ())
+    .depth_stencil_state(DepthStencilState::simple_depth_test())
+    .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
+    .render_pass(deferred_pass)
     .build(device.clone())
-    .unwrap());
+    .unwrap();
 ```
 Outside of renaming a couple of the variables it's the same. Our pipelines actually won't end up changing that much. The main change is just that we need two pipelines, one for each sub-pass.
 
 ```rust
-let lighting_pipeline = Arc::new(GraphicsPipeline::start()
-    .vertex_input_single_buffer::<Vertex>()
-    .vertex_shader(lighting_vert.main_entry_point(), ())
-    .triangle_list()
-    .viewports_dynamic_scissors_irrelevant(1)
-    .fragment_shader(lighting_frag.main_entry_point(), ())
-    .front_face_counter_clockwise()
-    .cull_mode_back()
-    .render_pass(lighting_pass.clone())
+let lighting_pipeline = GraphicsPipeline::start()
+    .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+    .vertex_shader(lighting_vert.entry_point("main").unwrap(), ())
+    .input_assembly_state(InputAssemblyState::new())
+    .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+    .fragment_shader(lighting_frag.entry_point("main").unwrap(), ())
+    .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
+    .render_pass(lighting_pass)
     .build(device.clone())
-    .unwrap());
+    .unwrap();
 ```
-Our second pipeline is almost identical to the first. The only real change is the use of different variables for the shaders and subpass as well as the lack of a call to `.depth_stencil_simple_depth()`. Since our second pass doesn't save to a depth attachment, Vulkan will crash if we tell it to expect one. That's really the only pitfall for this part of the code.
+Our second pipeline is almost identical to the first. The only real change is the use of different variables for the shaders and subpass as well as the lack of a call to `.depth_stencil_state()`. Since our second pass doesn't save to a depth attachment, Vulkan will crash if we tell it to expect one. That's really the only pitfall for this part of the code.
 
 #### Uniform Sets
 
@@ -326,7 +320,7 @@ let mut deferred_set_builder = PersistentDescriptorSet::start(deferred_layout.cl
 deferred_set_builder
     .add_buffer(uniform_buffer_subbuffer.clone())
     .unwrap();
-let deferred_set = Arc::new(deferred_set_builder.build().unwrap());
+let deferred_set = deferred_set_builder.build().unwrap();
 ```
 Nothing too notable here since we've seen this exact code in earlier lessons. However, notice that we specify the pipeline we're using. Uniform sets need to be attached to the correct pipeline to work.
 
@@ -347,7 +341,7 @@ lighting_set_builder
 lighting_set_builder
     .add_buffer(uniform_buffer_subbuffer)
     .unwrap();
-let lighting_set = Arc::new(lighting_set_builder.build().unwrap());
+let lighting_set = lighting_set_builder.build().unwrap();
 ```
 As you can see, renderpass attachments which are used as inputs to a sub-pass are given to that sub-pass as a uniform set. The order we add these attachment images to our descriptor set *does* matter, but not in the way you might expect. In the section on shaders we'll see how this looks on the consumer's side and revisit the topic of order.
 
@@ -526,11 +520,11 @@ The `layout` section looks mostly similar to other uniform inputs we've seen bef
 For an example of this, let's say we created our descriptor set in the other order.
 ```rust
 let lighting_layout = lighting_pipeline.descriptor_set_layout(0).unwrap();
-let lighting_set = Arc::new(PersistentDescriptorSet::start(lighting_layout.clone())
+let lighting_set = PersistentDescriptorSet::start(lighting_layout.clone())
     .add_image(normal_buffer.clone()).unwrap()    
     .add_image(color_buffer.clone()).unwrap()
     .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
-    .build().unwrap());
+    .build().unwrap();
 ```  
 
 We would use this in our shader as:
@@ -563,7 +557,7 @@ lighting_set_builder
 lighting_set_builder
     .add_buffer(directional_uniform_subbuffer)
     .unwrap();
-let lighting_set = Arc::new(lighting_set_builder.build().unwrap());
+let lighting_set = lighting_set_builder.build().unwrap();
 ```
 
 #### Running the Code

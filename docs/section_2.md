@@ -71,8 +71,8 @@ void main() {
     }
 }
 
-let vs = vs::Shader::load(device.clone()).unwrap();
-let fs = fs::Shader::load(device.clone()).unwrap();
+let vs = vs::load(device.clone()).unwrap();
+let fs = fs::load(device.clone()).unwrap();
 ```
 
 If this looks a bit hacky to you, you would be correct. This is one area where the Vulkano dev team is looking on improving where possible. The reason it looks like this is because shader compilation currently requires an external toolchain. For now, we'll just have to deal with it as it is. Let's walk through some points of interest in our code.
@@ -100,30 +100,28 @@ Also note in the fragment shader that `f_color = ...` is not an inbuilt function
 Along with the shader declaration, this is the other major item we skipped talking about in the last lesson. The reason for this is that the two go together. Our `GraphicsPipeline` object describes *what* gets used, *when* it gets used, and what should happen after. The best explanation might just be to show what it looks like. Remember that this goes after our `RenderPass` object is created.
 
 ```rust
-let pipeline = Arc::new(
-    GraphicsPipeline::start()
-        .vertex_input_single_buffer::<Vertex>()
-        .vertex_shader(vs.main_entry_point(), ())
-        .triangle_list()
-        .viewports_dynamic_scissors_irrelevant(1)
-        .fragment_shader(fs.main_entry_point(), ())
+let pipeline = GraphicsPipeline::start()
+        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
+        .input_assembly_state(InputAssemblyState::new())
+        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
-        .unwrap(),
-);
+        .unwrap();
 ```
 
 In understanding how to read this, keep in mind that each function call gets called in order. Reading it line by line lets us see how data will flow through our shaders to produce output.
 
-`.vertex_input_single_buffer::<Vertex>()` tells Vulkan to expect the shader to take exactly one buffer (explained in a bit) as input. The `::<Vertex>` part of this line is part of Rust's system of [generics](https://doc.rust-lang.org/book/ch10-01-syntax.html). Here we're telling it to expect data of the `Vertex` type.
+`.vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())` tells Vulkan to expect the shader to take exactly one buffer (explained in a bit) as input. The `::<Vertex>` part of this line is part of Rust's system of [generics](https://doc.rust-lang.org/book/ch10-01-syntax.html). Here we're telling it to expect data of the `Vertex` type. This can get more involved with more complicated buffer layouts but right now we're using the simplest form and can accept the defaults without much note.
 
-`.vertex_shader(vs.main_entry_point(), ())` tells Vulkan what to use as the vertex shader, as well as the main entry-point to use.
+`.vertex_shader(vs.entry_point("main").unwrap(), ())` tells Vulkan what to use as the vertex shader, as well as the main entry-point to use.
 
-`.triangle_list()` tells Vulkan that the data will be in the form of a list of triangles. That is, it can expect a stream of vertex data in which every set of three vertices produces a triangle. There are a *lot* of other data formats we can use, but they won't be covered here. These other formats are mostly used to help save bandwidth by not uploading as much information from the computer to the graphics hardware.
+`.input_assembly_state(InputAssemblyState::new())` tell Vulkan how the input should be assembled into privatives. The default setting which we get with `InputAssemblyState::new()` is `TriangleList`. This means we're telling Vulkan that it can expect a stream of vertex data in which every set of three vertices produces a triangle. There are a *lot* of other data formats we can use, but they won't be covered here. These other formats are mostly used to help save bandwidth by not uploading as much information from the computer to the graphics hardware.
 
-`.viewports_dynamic_scissors_irrelevant(1)` Sets the viewports and scissor boxes to be dynamic and to cover the whole screen. Setting this means we'll need to set our viewports later.
+`.viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())` Sets the viewports and scissor boxes to be dynamic and to cover the whole screen. Setting this means we'll need to set our viewports later.
 
-`.fragment_shader(fs.main_entry_point(), ())` tells Vulkan what to use as the fragment shader and where the main entry point is.
+`.fragment_shader(fs.entry_point("main").unwrap(), ())` tells Vulkan what to use as the fragment shader and where the main entry point is.
 
 `.render_pass(Subpass::from(render_pass.clone(), 0).unwrap())` Tells Vulkan what subpass to use for rendering. Most real applications will have multiple subpasses so this argument is important. However, right now we have a single subpass so we can just take it and be done.
 

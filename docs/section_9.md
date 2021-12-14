@@ -99,7 +99,7 @@ let vertex_buffer = CpuAccessibleBuffer::from_iter(
 This is how we declare our vertex buffer. Instead of using a hard-coded array to hold the vertex data we ask our `Model` instance to give us the array of the data it's loaded. As you can see, it's much nicer-looking than what we had before. This sort of generality means that the same code can handle new model data without needing to be rewritten.
 
 ```rust
-let uniform_buffer_subbuffer = Arc::new({
+let uniform_buffer_subbuffer = {
     let elapsed = rotation_start.elapsed().as_secs() as f64 + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
     let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
     cube.zero_rotation();
@@ -114,7 +114,7 @@ let uniform_buffer_subbuffer = Arc::new({
     };
 
     uniform_buffer.next(uniform_data).unwrap()
-});
+};
 ```
 
 This is the other major change we're making. You can see that we have moved the rotation logic to the `Model` the same way we did with the translation logic. We call `cube.zero_rotation();` to bring our `Model`'s rotation matrix back to zero. Without zeroing the rotation will accelerate without bounds
@@ -310,7 +310,7 @@ ambient_set_builder
 ambient_set_builder
     .add_buffer(ambient_uniform_subbuffer)
     .unwrap();
-let ambient_set = Arc::new(ambient_set_builder.build().unwrap());
+let ambient_set = ambient_set_builder.build().unwrap();
 ```
 
 ```rust
@@ -330,7 +330,7 @@ directional_set_builder
 directional_set_builder
     .add_buffer(directional_uniform_subbuffer.clone())
     .unwrap();
-let directional_set = Arc::new(directional_set_builder.build().unwrap());
+let directional_set = directional_set_builder.build().unwrap();
 ```
 
 #### Updating the Draw Command
