@@ -211,36 +211,31 @@ previously we set up an empty future since we had nothing we were waiting for at
 The following code is the only really new part of the lesson, creating the `Sampler`.
 
 ```rust
-let sampler = Sampler::new(
-    device.clone(),
-    Filter::Linear,
-    Filter::Linear,
-    MipmapMode::Nearest,
-    SamplerAddressMode::Repeat,
-    SamplerAddressMode::Repeat,
-    SamplerAddressMode::Repeat,
-    0.0,
-    1.0,
-    0.0,
-    0.0,
-).unwrap();
+let sampler = Sampler::start(device.clone())
+    .filter(Filter::Linear)
+    .mipmap_mode(SamplerMipmapMode::Nearest)
+    .address_mode(SamplerAddressMode::Repeat)
+    .mip_lod_bias(0.0)
+    .build()
+    .unwrap();
 ```
 
 This is new but it follows the same pattern for Vulkano data before. Earlier, when we created an `ImmutableImage`, we uploaded the data; however, by itself Vulkan doesn't know how it's supposed to access that data. The `Sampler` is how we tell Vulkan how to access that data. There are a number of arguments but the only one I want to call out here is `SamplerAddressMode::Repeat`. This tells Vulkan what to do if it receives UV values that lie outside the valid range. In this case, we're telling Vulkan to just repeat the image as necessary.
 
 #### Descriptor Set
 
-The descriptor set looks fairly similar to what we've seen before. We treat textures as a form of `uniform` so we use a new method, `add_sampled_image`, to add the texture and its sampler to the descriptor set.
+The descriptor set looks fairly similar to what we've seen before. We treat textures as a form of `uniform` so we use a new method, `image_view_sampler`, to add the texture and its sampler to the descriptor set.
 
 ```rust
 let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-set_builder
-    .add_buffer(uniform_buffer_subbuffer)
-    .unwrap()
-    .add_sampled_image(texture.clone(), sampler.clone())
-    .unwrap();
-let set = set_builder.build().unwrap();
+let set = PersistentDescriptorSet::new(
+    layout.clone(),
+    [
+        WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer.clone()),
+        WriteDescriptorSet::image_view_sampler(1, texture.clone(), sampler.clone()),
+    ],
+)
+.unwrap();
 ```
 
 ## Shaders

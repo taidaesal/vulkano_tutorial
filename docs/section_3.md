@@ -38,7 +38,7 @@ I am *at best* woefully underqualified to explain math to anyone. So I encourage
 We'll be adding a new dependency to our Cargo file for this lesson. Open it up and copy in the following code under the `[Dependencies]` header:
 
 ```toml
-nalgebra-glm = "0.5.0"
+nalgebra-glm = "0.16.0"
 ```
 
 #### Create our MVP data structure
@@ -168,9 +168,11 @@ When we created our new shaders we had a section of code that looked like `set =
 
 ```rust
 let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-set_builder.add_buffer(uniform_buffer_subbuffer).unwrap();
-let set = Arc::new(set_builder.build().unwrap());
+let set = PersistentDescriptorSet::new(
+    layout.clone(),
+    [WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer)],
+)
+.unwrap();
 ```
 
 For descriptor sets we need to know two things: the graphics pipeline the set is for and the index of the set. The first line here is how we find that information prior to creating our descriptor set. `pipeline` is, of course, the graphics pipeline we want to use and the `0` in `.descriptor_set_layout().get(0)` is the set index we're requesting. This argument corresponds to the `set = 0` part of our uniform `layout` in the shader. We can have multiple sets and multiple buffers per set. `layout(set = 0, binding = 0)` means that Vulkan wants `MVP_Data` to be the first buffer of the first descriptor set.
@@ -242,13 +244,17 @@ let second_uniform_subbuffer = Arc::new({
 
 ```rust
 let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-set_builder.add_buffer(uniform_buffer_subbuffer).unwrap();
-set_builder.add_buffer(second_uniform_subbuffer).unwrap();
-let set = Arc::new(set_builder.build().unwrap());
+let set = PersistentDescriptorSet::new(
+    layout.clone(),
+    [
+        WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer),
+        WriteDescriptorSet::buffer(1, second_uniform_subbuffer),
+    ],
+)
+.unwrap();
 ```
 
-Important Note: we call `.add_buffer()` in the order expected by our shader. We will not need to update our draw command since we are still only using a single set.
+The order we specify our `WriteDescriptorSet` in the array does not matter but the index we pass in each one must be the same as the index expected by our shaders. If it's wrong, we will be able to compile without errors or warnings but our program will not work.
 
 #### Back to our actual project
 

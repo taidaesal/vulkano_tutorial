@@ -242,14 +242,18 @@ let ambient_uniform_subbuffer = {
 
 Nothing dramatic here. We're just creating an instance of `fs::ty::Ambient_Data` and giving it a white light at 100% intensity. We'll play around with these values in a little bit.
 
-The last thing we need to do is update our set descriptor. You're probably tired of hearing it by now, but mind the order! Our ambient light information is our second uniform so it needs to be attached to the set *after* our MVP uniform.
+The last thing we need to do is update our set descriptor. Make sure our new descriptor set has the correct index
 
 ```rust
 let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-set_builder.add_buffer(uniform_buffer_subbuffer).unwrap();
-set_builder.add_buffer(ambient_uniform_subbuffer).unwrap();
-let set = set_builder.build().unwrap();
+let set = PersistentDescriptorSet::new(
+    layout.clone(),
+    [
+        WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer),
+        WriteDescriptorSet::buffer(1, ambient_uniform_subbuffer),
+    ],
+)
+.unwrap();
 ```
 
 #### Experimenting
@@ -404,11 +408,15 @@ let directional_uniform_subbuffer = {
 
 ```rust
 let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-set_builder.add_buffer(uniform_buffer_subbuffer).unwrap();
-set_builder.add_buffer(ambient_uniform_subbuffer).unwrap();
-set_builder.add_buffer(directional_uniform_subbuffer).unwrap();
-let set = set_builder.build().unwrap();
+let set = PersistentDescriptorSet::new(
+    layout.clone(),
+    [
+        WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer),
+        WriteDescriptorSet::buffer(1, ambient_uniform_subbuffer),
+        WriteDescriptorSet::buffer(2, directional_uniform_subbuffer),
+    ],
+)
+.unwrap();
 ```
 
 #### Running the code

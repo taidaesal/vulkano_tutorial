@@ -302,15 +302,14 @@ let ambient_layout = ambient_pipeline
     .descriptor_set_layouts()
     .get(0)
     .unwrap();
-let mut ambient_set_builder = PersistentDescriptorSet::start(ambient_layout.clone());
-ambient_set_builder.add_image(color_buffer.clone()).unwrap();
-ambient_set_builder
-    .add_image(normal_buffer.clone())
-    .unwrap();
-ambient_set_builder
-    .add_buffer(ambient_uniform_subbuffer)
-    .unwrap();
-let ambient_set = ambient_set_builder.build().unwrap();
+let ambient_set = PersistentDescriptorSet::new(
+    ambient_layout.clone(),
+    [
+        WriteDescriptorSet::image_view(0, color_buffer.clone()),
+        WriteDescriptorSet::buffer(1, ambient_uniform_subbuffer.clone()),
+    ],
+)
+.unwrap();
 ```
 
 ```rust
@@ -319,18 +318,15 @@ let directional_layout = directional_pipeline
     .descriptor_set_layouts()
     .get(0)
     .unwrap();
-let mut directional_set_builder =
-    PersistentDescriptorSet::start(directional_layout.clone());
-directional_set_builder
-    .add_image(color_buffer.clone())
-    .unwrap();
-directional_set_builder
-    .add_image(normal_buffer.clone())
-    .unwrap();
-directional_set_builder
-    .add_buffer(directional_uniform_subbuffer.clone())
-    .unwrap();
-let directional_set = directional_set_builder.build().unwrap();
+let directional_set = PersistentDescriptorSet::new(
+    directional_layout.clone(),
+    [
+        WriteDescriptorSet::image_view(0, color_buffer.clone()),
+        WriteDescriptorSet::image_view(1, normal_buffer.clone()),
+        WriteDescriptorSet::buffer(2, directional_uniform_subbuffer.clone()),
+    ],
+)
+.unwrap();
 ```
 
 #### Updating the Draw Command

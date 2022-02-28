@@ -249,10 +249,13 @@ impl System {
             .descriptor_set_layouts()
             .get(1)
             .unwrap();
-        let mut model_set_builder =
-            PersistentDescriptorSet::start(deferred_layout.clone());
-        model_set_builder.add_buffer(model_uniform_subbuffer.clone()).unwrap();
-        let model_set = model_set_builder.build().unwrap();
+        let model_set = PersistentDescriptorSet::new(
+            deferred_layout.clone(),
+            [
+                WriteDescriptorSet::buffer(0, model_uniform_subbuffer.clone()),
+            ],
+        )
+        .unwrap();
 
         let vertex_buffer = CpuAccessibleBuffer::from_iter(
             self.device.clone(),

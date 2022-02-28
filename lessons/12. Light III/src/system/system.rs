@@ -17,7 +17,7 @@ use vulkano::command_buffer::pool::standard::{
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, SubpassContents,
 };
-use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::format::Format;
@@ -423,9 +423,11 @@ impl System {
             .descriptor_set_layouts()
             .get(0)
             .unwrap();
-        let mut vp_set_builder = PersistentDescriptorSet::start(vp_layout.clone());
-        vp_set_builder.add_buffer(vp_buffer.clone()).unwrap();
-        let vp_set = vp_set_builder.build().unwrap();
+        let vp_set = PersistentDescriptorSet::new(
+            vp_layout.clone(),
+            [WriteDescriptorSet::buffer(0, vp_buffer.clone())],
+        )
+        .unwrap();
 
         let render_stage = RenderStage::Stopped;
 
@@ -490,15 +492,14 @@ impl System {
             .descriptor_set_layouts()
             .get(0)
             .unwrap();
-        let mut ambient_set_builder = PersistentDescriptorSet::start(ambient_layout.clone());
-        ambient_set_builder
-            .add_image(self.color_buffer.clone())
-            .unwrap()
-            .add_image(self.normal_buffer.clone())
-            .unwrap()
-            .add_buffer(self.ambient_buffer.clone())
-            .unwrap();
-        let ambient_set = ambient_set_builder.build().unwrap();
+        let ambient_set = PersistentDescriptorSet::new(
+            ambient_layout.clone(),
+            [
+                WriteDescriptorSet::image_view(0, self.color_buffer.clone()),
+                WriteDescriptorSet::buffer(1, self.ambient_buffer.clone()),
+            ],
+        )
+        .unwrap();
 
         let mut commands = self.commands.take().unwrap();
         commands
@@ -556,22 +557,18 @@ impl System {
             .descriptor_set_layouts()
             .get(0)
             .unwrap();
-        let mut directional_set_builder =
-            PersistentDescriptorSet::start(directional_layout.clone());
-        directional_set_builder
-            .add_image(self.color_buffer.clone())
-            .unwrap()
-            .add_image(self.normal_buffer.clone())
-            .unwrap()
-            .add_image(self.frag_location_buffer.clone())
-            .unwrap()
-            .add_image(self.specular_buffer.clone())
-            .unwrap()
-            .add_buffer(directional_uniform_subbuffer.clone())
-            .unwrap()
-            .add_buffer(camera_buffer.clone())
-            .unwrap();
-        let directional_set = directional_set_builder.build().unwrap();
+        let directional_set = PersistentDescriptorSet::new(
+            directional_layout.clone(),
+            [
+                WriteDescriptorSet::image_view(0, self.color_buffer.clone()),
+                WriteDescriptorSet::image_view(1, self.normal_buffer.clone()),
+                WriteDescriptorSet::image_view(2, self.frag_location_buffer.clone()),
+                WriteDescriptorSet::image_view(3, self.specular_buffer.clone()),
+                WriteDescriptorSet::buffer(4, directional_uniform_subbuffer.clone()),
+                WriteDescriptorSet::buffer(5, camera_buffer.clone()),
+            ],
+        )
+        .unwrap();
 
         let mut commands = self.commands.take().unwrap();
         commands
@@ -709,13 +706,14 @@ impl System {
             .descriptor_set_layouts()
             .get(1)
             .unwrap();
-        let mut model_set_builder = PersistentDescriptorSet::start(deferred_layout_model.clone());
-        model_set_builder
-            .add_buffer(model_uniform_subbuffer.clone())
-            .unwrap()
-            .add_buffer(specular_buffer.clone())
-            .unwrap();
-        let model_set = model_set_builder.build().unwrap();
+        let model_set = PersistentDescriptorSet::new(
+            deferred_layout_model.clone(),
+            [
+                WriteDescriptorSet::buffer(0, model_uniform_subbuffer.clone()),
+                WriteDescriptorSet::buffer(1, specular_buffer.clone()),
+            ],
+        )
+        .unwrap();
 
         let vertex_buffer = CpuAccessibleBuffer::from_iter(
             self.device.clone(),
@@ -783,11 +781,14 @@ impl System {
             .descriptor_set_layouts()
             .get(1)
             .unwrap();
-        let mut model_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
-        model_set_builder
-            .add_buffer(model_uniform_subbuffer.clone())
-            .unwrap();
-        let model_set = model_set_builder.build().unwrap();
+        let model_set = PersistentDescriptorSet::new(
+            deferred_layout.clone(),
+            [WriteDescriptorSet::buffer(
+                0,
+                model_uniform_subbuffer.clone(),
+            )],
+        )
+        .unwrap();
 
         let vertex_buffer = CpuAccessibleBuffer::from_iter(
             self.device.clone(),
@@ -844,9 +845,11 @@ impl System {
             .descriptor_set_layouts()
             .get(0)
             .unwrap();
-        let mut vp_set_builder = PersistentDescriptorSet::start(vp_layout.clone());
-        vp_set_builder.add_buffer(self.vp_buffer.clone()).unwrap();
-        self.vp_set = vp_set_builder.build().unwrap();
+        self.vp_set = PersistentDescriptorSet::new(
+            vp_layout.clone(),
+            [WriteDescriptorSet::buffer(0, self.vp_buffer.clone())],
+        )
+        .unwrap();
 
         self.render_stage = RenderStage::Stopped;
     }
@@ -967,9 +970,11 @@ impl System {
             .descriptor_set_layouts()
             .get(0)
             .unwrap();
-        let mut vp_set_builder = PersistentDescriptorSet::start(vp_layout.clone());
-        vp_set_builder.add_buffer(self.vp_buffer.clone()).unwrap();
-        self.vp_set = vp_set_builder.build().unwrap();
+        self.vp_set = PersistentDescriptorSet::new(
+            vp_layout.clone(),
+            [WriteDescriptorSet::buffer(0, self.vp_buffer.clone())],
+        )
+        .unwrap();
 
         self.render_stage = RenderStage::Stopped;
     }

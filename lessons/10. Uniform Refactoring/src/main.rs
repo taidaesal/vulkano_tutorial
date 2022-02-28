@@ -11,7 +11,7 @@ mod obj_loader;
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
-use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
@@ -358,9 +358,11 @@ fn main() {
         .descriptor_set_layouts()
         .get(0)
         .unwrap();
-    let mut vp_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
-    vp_set_builder.add_buffer(vp_buffer.clone()).unwrap();
-    let mut vp_set = vp_set_builder.build().unwrap();
+    let mut vp_set = PersistentDescriptorSet::new(
+        deferred_layout.clone(),
+        [WriteDescriptorSet::buffer(0, vp_buffer.clone())],
+    )
+    .unwrap();
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -425,9 +427,11 @@ fn main() {
                     .descriptor_set_layouts()
                     .get(0)
                     .unwrap();
-                let mut vp_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
-                vp_set_builder.add_buffer(new_vp_buffer.clone()).unwrap();
-                vp_set = vp_set_builder.build().unwrap();
+                vp_set = PersistentDescriptorSet::new(
+                    deferred_layout.clone(),
+                    [WriteDescriptorSet::buffer(0, new_vp_buffer.clone())],
+                )
+                .unwrap();
 
                 recreate_swapchain = false;
             }
@@ -486,27 +490,28 @@ fn main() {
                 .descriptor_set_layouts()
                 .get(1)
                 .unwrap();
-            let mut model_set_builder =
-                PersistentDescriptorSet::start(deferred_layout_model.clone());
-            model_set_builder
-                .add_buffer(model_uniform_subbuffer.clone())
-                .unwrap();
-            let model_set = model_set_builder.build().unwrap();
+            let model_set = PersistentDescriptorSet::new(
+                deferred_layout_model.clone(),
+                [WriteDescriptorSet::buffer(
+                    0,
+                    model_uniform_subbuffer.clone(),
+                )],
+            )
+            .unwrap();
 
             let ambient_layout = ambient_pipeline
                 .layout()
                 .descriptor_set_layouts()
                 .get(0)
                 .unwrap();
-            let mut ambient_set_builder = PersistentDescriptorSet::start(ambient_layout.clone());
-            ambient_set_builder
-                .add_image(color_buffer.clone())
-                .unwrap()
-                .add_image(normal_buffer.clone())
-                .unwrap()
-                .add_buffer(ambient_uniform_subbuffer.clone())
-                .unwrap();
-            let ambient_set = ambient_set_builder.build().unwrap();
+            let ambient_set = PersistentDescriptorSet::new(
+                ambient_layout.clone(),
+                [
+                    WriteDescriptorSet::image_view(0, color_buffer.clone()),
+                    WriteDescriptorSet::buffer(1, ambient_uniform_subbuffer.clone()),
+                ],
+            )
+            .unwrap();
 
             let directional_uniform_subbuffer =
                 generate_directional_buffer(&directional_buffer, &directional_light);
@@ -515,16 +520,15 @@ fn main() {
                 .descriptor_set_layouts()
                 .get(0)
                 .unwrap();
-            let mut directional_set_builder =
-                PersistentDescriptorSet::start(directional_layout.clone());
-            directional_set_builder
-                .add_image(color_buffer.clone())
-                .unwrap()
-                .add_image(normal_buffer.clone())
-                .unwrap()
-                .add_buffer(directional_uniform_subbuffer.clone())
-                .unwrap();
-            let directional_set = directional_set_builder.build().unwrap();
+            let directional_set = PersistentDescriptorSet::new(
+                directional_layout.clone(),
+                [
+                    WriteDescriptorSet::image_view(0, color_buffer.clone()),
+                    WriteDescriptorSet::image_view(1, normal_buffer.clone()),
+                    WriteDescriptorSet::buffer(2, directional_uniform_subbuffer.clone()),
+                ],
+            )
+            .unwrap();
 
             let mut commands = AutoCommandBufferBuilder::primary(
                 device.clone(),

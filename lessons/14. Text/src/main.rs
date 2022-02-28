@@ -8,7 +8,7 @@
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
-use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
@@ -23,7 +23,7 @@ use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
-use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
+use vulkano::sampler::{Filter, Sampler, SamplerAddressMode, SamplerMipmapMode};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
@@ -259,20 +259,13 @@ void main() {
     let mono = Monospace::new();
     let now = Instant::now();
 
-    let sampler = Sampler::new(
-        device.clone(),
-        Filter::Linear,
-        Filter::Linear,
-        MipmapMode::Nearest,
-        SamplerAddressMode::Repeat,
-        SamplerAddressMode::Repeat,
-        SamplerAddressMode::Repeat,
-        0.0,
-        1.0,
-        0.0,
-        0.0,
-    )
-    .unwrap();
+    let sampler = Sampler::start(device.clone())
+        .filter(Filter::Linear)
+        .mipmap_mode(SamplerMipmapMode::Nearest)
+        .address_mode(SamplerAddressMode::Repeat)
+        .mip_lod_bias(0.0)
+        .build()
+        .unwrap();
 
     let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
 
@@ -368,14 +361,14 @@ void main() {
             };
 
             let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-            let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-            set_builder
-                .add_buffer(uniform_buffer_subbuffer)
-                .unwrap()
-                .add_sampled_image(texture.clone(), sampler.clone())
-                .unwrap();
-            let set = set_builder.build().unwrap();
-
+            let set = PersistentDescriptorSet::new(
+                layout.clone(),
+                [
+                    WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer.clone()),
+                    WriteDescriptorSet::image_view_sampler(1, texture.clone(), sampler.clone()),
+                ],
+            )
+            .unwrap();
             let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary(
                 device.clone(),
                 queue.family(),

@@ -8,7 +8,7 @@
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
-use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
@@ -593,34 +593,31 @@ fn main() {
                 .descriptor_set_layouts()
                 .get(0)
                 .unwrap();
-            let mut deferred_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
-            deferred_set_builder
-                .add_buffer(uniform_buffer_subbuffer.clone())
-                .unwrap();
-            let deferred_set = deferred_set_builder.build().unwrap();
+            let deferred_set = PersistentDescriptorSet::new(
+                deferred_layout.clone(),
+                [WriteDescriptorSet::buffer(
+                    0,
+                    uniform_buffer_subbuffer.clone(),
+                )],
+            )
+            .unwrap();
 
             let lighting_layout = lighting_pipeline
                 .layout()
                 .descriptor_set_layouts()
                 .get(0)
                 .unwrap();
-            let mut lighting_set_builder = PersistentDescriptorSet::start(lighting_layout.clone());
-            lighting_set_builder
-                .add_image(color_buffer.clone())
-                .unwrap();
-            lighting_set_builder
-                .add_image(normal_buffer.clone())
-                .unwrap();
-            lighting_set_builder
-                .add_buffer(uniform_buffer_subbuffer)
-                .unwrap();
-            lighting_set_builder
-                .add_buffer(ambient_uniform_subbuffer)
-                .unwrap();
-            lighting_set_builder
-                .add_buffer(directional_uniform_subbuffer)
-                .unwrap();
-            let lighting_set = lighting_set_builder.build().unwrap();
+            let lighting_set = PersistentDescriptorSet::new(
+                lighting_layout.clone(),
+                [
+                    WriteDescriptorSet::image_view(0, color_buffer.clone()),
+                    WriteDescriptorSet::image_view(1, normal_buffer.clone()),
+                    WriteDescriptorSet::buffer(2, uniform_buffer_subbuffer),
+                    WriteDescriptorSet::buffer(3, ambient_uniform_subbuffer),
+                    WriteDescriptorSet::buffer(4, directional_uniform_subbuffer),
+                ],
+            )
+            .unwrap();
 
             let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary(
                 device.clone(),

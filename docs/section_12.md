@@ -273,22 +273,18 @@ impl System {
             .descriptor_set_layouts()
             .get(0)
             .unwrap();
-        let mut directional_set_builder =
-            PersistentDescriptorSet::start(directional_layout.clone());
-        directional_set_builder
-            .add_image(self.color_buffer.clone())
-            .unwrap()
-            .add_image(self.normal_buffer.clone())
-            .unwrap()
-            .add_image(self.frag_location_buffer.clone())
-            .unwrap()
-            .add_image(self.specular_buffer.clone())
-            .unwrap()
-            .add_buffer(directional_uniform_subbuffer.clone())
-            .unwrap()
-            .add_buffer(camera_buffer.clone())
-            .unwrap();
-        let directional_set = directional_set_builder.build().unwrap();
+        let directional_set = PersistentDescriptorSet::new(
+            directional_layout.clone(),
+            [
+                WriteDescriptorSet::image_view(0, self.color_buffer.clone()),
+                WriteDescriptorSet::image_view(1, self.normal_buffer.clone()),
+                WriteDescriptorSet::image_view(2, self.frag_location_buffer.clone()),
+                WriteDescriptorSet::image_view(3, self.specular_buffer.clone()),
+                WriteDescriptorSet::buffer(4, directional_uniform_subbuffer.clone()),
+                WriteDescriptorSet::buffer(5, camera_buffer.clone()),
+            ],
+        )
+        .unwrap();
         //...
     }
 
@@ -310,13 +306,14 @@ impl System {
             .descriptor_set_layouts()
             .get(1)
             .unwrap();
-        let mut model_set_builder = PersistentDescriptorSet::start(deferred_layout_model.clone());
-        model_set_builder
-            .add_buffer(model_uniform_subbuffer.clone())
-            .unwrap()
-            .add_buffer(specular_buffer.clone())
-            .unwrap();
-        let model_set = model_set_builder.build().unwrap();
+        let model_set = PersistentDescriptorSet::new(
+            deferred_layout_model.clone(),
+            [
+                WriteDescriptorSet::buffer(0, model_uniform_subbuffer.clone()),
+                WriteDescriptorSet::buffer(1, specular_buffer.clone()),
+            ],
+        )
+        .unwrap();
         //...
     }
 

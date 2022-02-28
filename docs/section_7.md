@@ -317,10 +317,14 @@ let deferred_layout = deferred_pipeline
     .get(0)
     .unwrap();
 let mut deferred_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
-deferred_set_builder
-    .add_buffer(uniform_buffer_subbuffer.clone())
-    .unwrap();
-let deferred_set = deferred_set_builder.build().unwrap();
+let deferred_set = PersistentDescriptorSet::new(
+    deferred_layout.clone(),
+    [WriteDescriptorSet::buffer(
+        0,
+        uniform_buffer_subbuffer.clone(),
+    )],
+)
+.unwrap();
 ```
 Nothing too notable here since we've seen this exact code in earlier lessons. However, notice that we specify the pipeline we're using. Uniform sets need to be attached to the correct pipeline to work.
 
@@ -331,18 +335,17 @@ let lighting_layout = lighting_pipeline
     .descriptor_set_layouts()
     .get(0)
     .unwrap();
-let mut lighting_set_builder = PersistentDescriptorSet::start(lighting_layout.clone());
-lighting_set_builder
-    .add_image(color_buffer.clone())
-    .unwrap();
-lighting_set_builder
-    .add_image(normal_buffer.clone())
-    .unwrap();
-lighting_set_builder
-    .add_buffer(uniform_buffer_subbuffer)
-    .unwrap();
-let lighting_set = lighting_set_builder.build().unwrap();
+let lighting_set = PersistentDescriptorSet::new(
+    lighting_layout.clone(),
+    [
+        WriteDescriptorSet::image_view(0, color_buffer.clone()),
+        WriteDescriptorSet::image_view(1, normal_buffer.clone()),
+        WriteDescriptorSet::buffer(2, uniform_buffer_subbuffer),
+    ],
+)
+.unwrap();
 ```
+
 As you can see, renderpass attachments which are used as inputs to a sub-pass are given to that sub-pass as a uniform set. The order we add these attachment images to our descriptor set *does* matter, but not in the way you might expect. In the section on shaders we'll see how this looks on the consumer's side and revisit the topic of order.
 
 #### Rendering
@@ -515,25 +518,7 @@ Starting in the middle with `uniform` and it tells us that, well, this is a unif
 
 The `subpassInput` keyword is actually our data type. Remember that there are dozens of different formats our render attachments can have, so we can't really figure that out from inside the shaders. With `subpassInput` we are basically committing to accepting a raw data stream and knowing how to handle it ourselves.
 
-The `layout` section looks mostly similar to other uniform inputs we've seen before but it does have a new argument, `input_attachment_index`. Unlike `binding` the value of `input_attachment_index` depends on the order the attachments are given in the *renderpass*, not in the descriptor set. This means that we don't have to have the `binding` values match the `input_atachment_index` values.
-
-For an example of this, let's say we created our descriptor set in the other order.
-```rust
-let lighting_layout = lighting_pipeline.descriptor_set_layout(0).unwrap();
-let lighting_set = PersistentDescriptorSet::start(lighting_layout.clone())
-    .add_image(normal_buffer.clone()).unwrap()    
-    .add_image(color_buffer.clone()).unwrap()
-    .add_buffer(uniform_buffer_subbuffer.clone()).unwrap()
-    .build().unwrap();
-```  
-
-We would use this in our shader as:
-```glsl
-layout(input_attachment_index = 1, set = 0, binding = 0) uniform subpassInput u_normals;
-layout(input_attachment_index = 0, set = 0, binding = 1) uniform subpassInput u_color;
-```
-
-This would work, but I find it ugly and confusing, so I try to list the attachments in the same order in both the renderpass and the descriptor sets. That said, you should pick a style that works best for you and not worry about the approval of a random stranger on the Internet.
+The `layout` section looks mostly similar to other uniform inputs we've seen before but it does have a new argument, `input_attachment_index`. Unlike `binding` the value of `input_attachment_index` depends on the order the attachments are given in the *renderpass*, not in the descriptor set. This is an important distinction to keep in mind as it's easy to mess up your index values and the resulting errors can be confusing and hard to diagnose.
 
 Lastly, let's look at `f_color = vec4(subpassLoad(u_color).rgb, 1.0);`
 
@@ -541,23 +526,22 @@ Since we can't just use our input uniforms as a regular variable, we need to use
 
 Let's add back in the sub-buffers we commented out earlier in the lesson.
 ```rust
-let mut lighting_set_builder = PersistentDescriptorSet::start(lighting_layout.clone());
-lighting_set_builder
-    .add_image(color_buffer.clone())
+let lighting_layout = lighting_pipeline
+    .layout()
+    .descriptor_set_layouts()
+    .get(0)
     .unwrap();
-lighting_set_builder
-    .add_image(normal_buffer.clone())
-    .unwrap();
-lighting_set_builder
-    .add_buffer(uniform_buffer_subbuffer)
-    .unwrap();
-lighting_set_builder
-    .add_buffer(ambient_uniform_subbuffer)
-    .unwrap();
-lighting_set_builder
-    .add_buffer(directional_uniform_subbuffer)
-    .unwrap();
-let lighting_set = lighting_set_builder.build().unwrap();
+let lighting_set = PersistentDescriptorSet::new(
+    lighting_layout.clone(),
+    [
+        WriteDescriptorSet::image_view(0, color_buffer.clone()),
+        WriteDescriptorSet::image_view(1, normal_buffer.clone()),
+        WriteDescriptorSet::buffer(2, uniform_buffer_subbuffer),
+        WriteDescriptorSet::buffer(3, ambient_uniform_subbuffer),
+        WriteDescriptorSet::buffer(4, directional_uniform_subbuffer),
+    ],
+)
+.unwrap();
 ```
 
 #### Running the Code

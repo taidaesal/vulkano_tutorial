@@ -126,9 +126,11 @@ if recreate_swapchain {
         .descriptor_set_layouts()
         .get(0)
         .unwrap();
-    let mut vp_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
-    vp_set_builder.add_buffer(new_vp_buffer.clone()).unwrap();
-    vp_set = vp_set_builder.build().unwrap();
+    vp_set = PersistentDescriptorSet::new(
+        deferred_layout.clone(),
+        [WriteDescriptorSet::buffer(0, new_vp_buffer.clone())],
+    )
+    .unwrap();
 
     recreate_swapchain = false;
 }
@@ -141,10 +143,13 @@ let deferred_layout = deferred_pipeline
     .descriptor_set_layouts()
     .get(0)
     .unwrap();
-let deferred_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
-deferred_set_builder
-    .add_buffer(vp_buffer.clone()).unwrap();
-let deferred_set = deferred_set_builder.build().unwrap();
+let deferred_set = PersistentDescriptorSet::new(
+    deferred_layout.clone(),
+    [
+        WriteDescriptorSet::buffer(0, vp_buffer.clone()),
+    ],
+)
+.unwrap();
 ```
 
 To be perfectly honest, this is a small saving. But it's the sort of thing we need to keep in mind if we want to squeeze every bit of bandwidth possible out of our graphics hardware.
@@ -196,9 +201,11 @@ let deferred_layout = deferred_pipeline
     .descriptor_set_layouts()
     .get(0)
     .unwrap();
-let mut vp_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
-vp_set_builder.add_buffer(vp_buffer.clone()).unwrap();
-let mut vp_set = vp_set_builder.build().unwrap();
+let mut vp_set = PersistentDescriptorSet::new(
+    deferred_layout.clone(),
+    [WriteDescriptorSet::buffer(0, vp_buffer.clone())],
+)
+.unwrap();
 ```
 
 We can re-create it right after we recreate our `vp_buffer` in the swapchain recreation portion of the render loop.
@@ -211,9 +218,11 @@ if recreate_swapchain {
         .descriptor_set_layouts()
         .get(0)
         .unwrap();
-    let mut vp_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
-    vp_set_builder.add_buffer(new_vp_buffer.clone()).unwrap();
-    vp_set = vp_set_builder.build().unwrap();
+    let mut vp_set = PersistentDescriptorSet::new(
+        deferred_layout.clone(),
+        [WriteDescriptorSet::buffer(0, vp_buffer.clone())],
+    )
+    .unwrap();
 
     recreate_swapchain = false;
 }
@@ -253,12 +262,14 @@ let deferred_layout_model = deferred_pipeline
     .descriptor_set_layouts()
     .get(1)
     .unwrap();
-let mut model_set_builder =
-    PersistentDescriptorSet::start(deferred_layout_model.clone());
-model_set_builder
-    .add_buffer(model_uniform_subbuffer.clone())
-    .unwrap();
-let model_set = model_set_builder.build().unwrap();
+let model_set = PersistentDescriptorSet::new(
+    deferred_layout_model.clone(),
+    [WriteDescriptorSet::buffer(
+        0,
+        model_uniform_subbuffer.clone(),
+    )],
+)
+.unwrap();
 ```
 
 The only real thing to notice is that we used `1` as the argument for the descriptor_set_layout for the first time in this lesson series.

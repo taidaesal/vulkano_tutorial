@@ -8,7 +8,7 @@
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
-use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::image::view::ImageView;
@@ -310,9 +310,11 @@ void main() {
             };
 
             let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-            let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-            set_builder.add_buffer(uniform_buffer_subbuffer).unwrap();
-            let set = set_builder.build().unwrap();
+            let set = PersistentDescriptorSet::new(
+                layout.clone(),
+                [WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer)],
+            )
+            .unwrap();
 
             let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary(
                 device.clone(),

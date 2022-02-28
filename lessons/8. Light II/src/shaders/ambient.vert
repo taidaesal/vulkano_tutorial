@@ -2,7 +2,7 @@
 
 layout(location = 0) in vec3 position;
 
-layout(set = 0, binding = 2) uniform MVP_Data {
+layout(set = 0, binding = 1) uniform MVP_Data {
     mat4 model;
     mat4 view;
     mat4 projection;

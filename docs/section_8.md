@@ -256,31 +256,30 @@ let deferred_layout = deferred_pipeline
     .descriptor_set_layouts()
     .get(0)
     .unwrap();
-let mut deferred_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
-deferred_set_builder
-    .add_buffer(uniform_buffer_subbuffer.clone())
-    .unwrap();
-let deferred_set = deferred_set_builder.build().unwrap();
+let deferred_set = PersistentDescriptorSet::new(
+    deferred_layout.clone(),
+    [WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer.clone())],
+)
+.unwrap();
 
 let ambient_layout = ambient_pipeline
     .layout()
     .descriptor_set_layouts()
     .get(0)
     .unwrap();
-let mut ambient_set_builder = PersistentDescriptorSet::start(ambient_layout.clone());
-ambient_set_builder.add_image(color_buffer.clone()).unwrap();
-ambient_set_builder
-    .add_image(normal_buffer.clone())
-    .unwrap();
-ambient_set_builder
-    .add_buffer(uniform_buffer_subbuffer.clone())
-    .unwrap();
-ambient_set_builder
-    .add_buffer(ambient_uniform_subbuffer)
-    .unwrap();
-let ambient_set = ambient_set_builder.build().unwrap();
+let ambient_set = PersistentDescriptorSet::new(
+    ambient_layout.clone(),
+    [
+        WriteDescriptorSet::image_view(0, color_buffer.clone()), 
+        WriteDescriptorSet::buffer(1, uniform_buffer_subbuffer.clone()),
+        WriteDescriptorSet::buffer(2, ambient_uniform_subbuffer.clone())
+    ],
+)
+.unwrap();
 ```
 Our sets have been updated as well. We no longer need to provide the ambient sub-buffer to `directional_set`. Instead, we create a third descriptor set to store the inputs we need for our ambient shaders.
+
+Side Note: Earlier versions of this tutorial had the ambient shaders taking in the normals buffer as input despite not actually using it. This passed without issue in earlier versions of the Vulkano api but as of version 0.28.0 only bindings that are actually used will be generated. This leads to an `InvalidBinding` error. So if you see the same error make sure that you're actually using all your inputs. 
 
 #### Updated Render Call
 
@@ -429,23 +428,18 @@ let directional_layout = directional_pipeline
     .descriptor_set_layouts()
     .get(0)
     .unwrap();
-let mut directional_set_builder =
-    PersistentDescriptorSet::start(directional_layout.clone());
-directional_set_builder
-    .add_image(color_buffer.clone())
-    .unwrap();
-directional_set_builder
-    .add_image(normal_buffer.clone())
-    .unwrap();
-directional_set_builder
-    .add_buffer(uniform_buffer_subbuffer.clone())
-    .unwrap();
-directional_set_builder
-    .add_buffer(directional_uniform_subbuffer.clone())
-    .unwrap();
-let mut directional_set = directional_set_builder.build().unwrap();
+let directional_set = PersistentDescriptorSet::new(
+    directional_layout.clone(),
+    [
+        WriteDescriptorSet::image_view(0, color_buffer.clone()), 
+        WriteDescriptorSet::image_view(1, normal_buffer.clone()),
+        WriteDescriptorSet::buffer(2, uniform_buffer_subbuffer.clone()),
+        WriteDescriptorSet::buffer(3, directional_uniform_subbuffer.clone())
+    ],
+)
+.unwrap();
 ```
-We use our helper function for the first time here to declare our usual `directional_uniform_subbuffer` variable. However, note that both `directional_uniform_subbuffer` and `directional_set` are mutable.
+We use our helper function for the first time here to declare our usual `directional_uniform_subbuffer` variable.
 
 Next we append the rendering commands to our command buffer building.
 ```rust
@@ -467,21 +461,16 @@ That will do for the first directional light and now we can just do the same thi
 directional_uniform_subbuffer =
     generate_directional_buffer(&directional_buffer, &directional_light_g);
 
-let mut directional_set_builder =
-    PersistentDescriptorSet::start(directional_layout.clone());
-directional_set_builder
-    .add_image(color_buffer.clone())
-    .unwrap();
-directional_set_builder
-    .add_image(normal_buffer.clone())
-    .unwrap();
-directional_set_builder
-    .add_buffer(uniform_buffer_subbuffer.clone())
-    .unwrap();
-directional_set_builder
-    .add_buffer(directional_uniform_subbuffer.clone())
-    .unwrap();
-directional_set = directional_set_builder.build().unwrap();
+let directional_set = PersistentDescriptorSet::new(
+    directional_layout.clone(),
+    [
+        WriteDescriptorSet::image_view(0, color_buffer.clone()), 
+        WriteDescriptorSet::image_view(1, normal_buffer.clone()),
+        WriteDescriptorSet::buffer(2, uniform_buffer_subbuffer.clone()),
+        WriteDescriptorSet::buffer(3, directional_uniform_subbuffer.clone())
+    ],
+)
+.unwrap();
 
 commands
     .bind_pipeline_graphics(directional_pipeline.clone())
@@ -497,21 +486,16 @@ commands
 
 directional_uniform_subbuffer =
     generate_directional_buffer(&directional_buffer, &directional_light_b);
-let mut directional_set_builder =
-    PersistentDescriptorSet::start(directional_layout.clone());
-directional_set_builder
-    .add_image(color_buffer.clone())
-    .unwrap();
-directional_set_builder
-    .add_image(normal_buffer.clone())
-    .unwrap();
-directional_set_builder
-    .add_buffer(uniform_buffer_subbuffer.clone())
-    .unwrap();
-directional_set_builder
-    .add_buffer(directional_uniform_subbuffer.clone())
-    .unwrap();
-directional_set = directional_set_builder.build().unwrap();
+let directional_set = PersistentDescriptorSet::new(
+    directional_layout.clone(),
+    [
+        WriteDescriptorSet::image_view(0, color_buffer.clone()), 
+        WriteDescriptorSet::image_view(1, normal_buffer.clone()),
+        WriteDescriptorSet::buffer(2, uniform_buffer_subbuffer.clone()),
+        WriteDescriptorSet::buffer(3, directional_uniform_subbuffer.clone())
+    ],
+)
+.unwrap();
 
 commands
     .bind_pipeline_graphics(directional_pipeline.clone())
