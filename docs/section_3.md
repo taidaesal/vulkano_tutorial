@@ -208,7 +208,7 @@ layout(location = 1) in vec3 color;
 layout(location = 0) out vec3 out_color;
 
 layout(set = 0, binding = 0) uniform MVP_Data {
-    mat4 world;
+    mat4 model;
     mat4 view;
     mat4 projection;
 } uniforms;
@@ -219,7 +219,7 @@ layout(set = 0, binding = 1) uniform extra_data_idk {
 
 void main() {
     // do something with extra_data_idk.extra_data
-    mat4 worldview = uniforms.view * uniforms.world;
+    mat4 worldview = uniforms.view * uniforms.model;
     gl_Position = uniforms.projection * worldview * vec4(position, 1.0);
     out_color = color;
 }"
