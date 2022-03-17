@@ -80,7 +80,8 @@ Now let's walk through how we add textures to our program. As you'll see, it's p
 Let's modify our `Vertex` data type. We don't need a `color` vertex any more but instead a two-member `uv` vertex. All the previous things about defining a data type to pass to the GPU apply here so keep past lessons in mind when planning your own system.
 
 ```rust
-#[derive(Default, Debug, Clone)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
 struct Vertex {
     position: [f32; 3],
     uv: [f32; 2]
@@ -129,7 +130,14 @@ let (texture, tex_future) = {
         array_layers: 1,
     };
     let mut image_data = Vec::new();
-    image_data.resize((info.width * info.height * 4) as usize, 0);
+    let depth: u32 = match info.bit_depth {
+        png::BitDepth::One => 1,
+        png::BitDepth::Two => 2,
+        png::BitDepth::Four => 4,
+        png::BitDepth::Eight => 8,
+        png::BitDepth::Sixteen => 16,
+    };
+    image_data.resize((info.width * info.height * depth) as usize, 0);
     reader.next_frame(&mut image_data).unwrap();
     let (image, future) = ImmutableImage::from_iter(
         image_data.iter().cloned(),
@@ -139,7 +147,7 @@ let (texture, tex_future) = {
         queue.clone(),
     )
     .unwrap();
-    (ImageView::new(image).unwrap(), future)
+    (ImageView::new_default(image).unwrap(), future)
 };
 ```
 
@@ -194,7 +202,7 @@ let (image, future) = ImmutableImage::from_iter(
     queue.clone(),
 )
 .unwrap();
-(ImageView::new(image).unwrap(), future)
+(ImageView::new_default(image).unwrap(), future)
 ```
 
 The last part of this code block is where we bring Vulkan into it. We're seeing `ImmutableImage` for the first time here but I bet you can probably guess what it is. It's the brother type to `AttachmentImage` and `SwapchainImage` and is a data buffer type, it doesn't have to store literal image data but in this case that's exactly what we're doing right here. We can use an `ImmutableImage` here because we won't ever need to change the data we're storing in this `Image`. We don't strictly have to use it but it gives the Vulkan driver a hint about expected use that lets it do optimizations behind the scenes.
@@ -211,13 +219,18 @@ previously we set up an empty future since we had nothing we were waiting for at
 The following code is the only really new part of the lesson, creating the `Sampler`.
 
 ```rust
-let sampler = Sampler::start(device.clone())
-    .filter(Filter::Linear)
-    .mipmap_mode(SamplerMipmapMode::Nearest)
-    .address_mode(SamplerAddressMode::Repeat)
-    .mip_lod_bias(0.0)
-    .build()
-    .unwrap();
+let sampler = Sampler::new(
+    device.clone(),
+    SamplerCreateInfo {
+        mag_filter: Filter::Linear,
+        min_filter: Filter::Linear,
+        mipmap_mode: SamplerMipmapMode::Nearest,
+        address_mode: [SamplerAddressMode::Repeat; 3],
+        mip_lod_bias: 0.0,
+        ..Default::default()
+    },
+)
+.unwrap();
 ```
 
 This is new but it follows the same pattern for Vulkano data before. Earlier, when we created an `ImmutableImage`, we uploaded the data; however, by itself Vulkan doesn't know how it's supposed to access that data. The `Sampler` is how we tell Vulkan how to access that data. There are a number of arguments but the only one I want to call out here is `SamplerAddressMode::Repeat`. This tells Vulkan what to do if it receives UV values that lie outside the valid range. In this case, we're telling Vulkan to just repeat the image as necessary.

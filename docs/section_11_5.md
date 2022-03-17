@@ -56,9 +56,14 @@ void main() {
 `system.rs`
 ```rust
 mod light_obj_vert {
-    vulkano_shaders::shader!{
+    vulkano_shaders::shader! {
         ty: "vertex",
-        path: "src/system/shaders/light_obj.vert"
+        path: "src/system/shaders/light_obj.vert",
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        },
     }
 }
 

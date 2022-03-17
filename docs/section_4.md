@@ -89,20 +89,23 @@ our only new line is `.depth_stencil_state(DepthStencilState::simple_depth_test(
 We have a new framebuffer attachment declared in our renderpass so we need to make sure to add it to our framebuffer declarations as well.
 
 ```rust
-let depth_buffer = ImageView::new(
+let dimensions = images[0].dimensions().width_height();
+let depth_buffer = ImageView::new_default(
     AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
 )
 .unwrap();
 images
     .iter()
     .map(|image| {
-        Framebuffer::start(render_pass.clone())
-            .add(view)
-            .unwrap()
-            .add(depth_buffer.clone())
-            .unwrap()
-            .build()
-            .unwrap()
+        let view = ImageView::new_default(image.clone()).unwrap();
+        Framebuffer::new(
+            render_pass.clone(),
+            FramebufferCreateInfo {
+                attachments: vec![view, depth_buffer.clone()],
+                ..Default::default()
+            },
+        )
+        .unwrap()
     })
     .collect::<Vec<_>>()
 ```

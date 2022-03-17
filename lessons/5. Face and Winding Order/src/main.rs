@@ -1,4 +1,4 @@
-// Copyright (c) 2021 taidaesal
+// Copyright (c) 2022 taidaesal
 // Licensed under the MIT license
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>
 //
@@ -6,24 +6,27 @@
 // from code provided by the Vulkano project under
 // the MIT license
 
+use bytemuck::{Pod, Zeroable};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::device::physical::PhysicalDevice;
-use vulkano::device::{Device, DeviceExtensions};
+use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
+use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
 use vulkano::format::Format;
-use vulkano::image::attachment::AttachmentImage;
 use vulkano::image::view::ImageView;
-use vulkano::image::{ImageAccess, SwapchainImage};
-use vulkano::instance::Instance;
+use vulkano::image::{AttachmentImage, ImageAccess, SwapchainImage};
+use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::pipeline::graphics::depth_stencil::DepthStencilState;
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::rasterization::{CullMode, RasterizationState};
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
-use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
-use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::pipeline::Pipeline;
+use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
+use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
+use vulkano::swapchain::{
+    self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
 
@@ -37,7 +40,8 @@ use nalgebra_glm::{identity, look_at, perspective, vec3, TMat4};
 
 use std::sync::Arc;
 
-#[derive(Default, Debug, Clone)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
 struct Vertex {
     position: [f32; 3],
     color: [f32; 3],
@@ -71,57 +75,81 @@ fn main() {
 
     let instance = {
         let extensions = vulkano_win::required_extensions();
-        Instance::new(None, Version::V1_1, &extensions, None).unwrap()
+        Instance::new(InstanceCreateInfo {
+            enabled_extensions: extensions,
+            max_api_version: Some(Version::V1_1),
+            ..Default::default()
+        })
+        .unwrap()
     };
-
-    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
 
     let event_loop = EventLoop::new();
     let surface = WindowBuilder::new()
         .build_vk_surface(&event_loop, instance.clone())
         .unwrap();
 
-    let queue_family = physical
-        .queue_families()
-        .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
-        .unwrap();
-
     let device_ext = DeviceExtensions {
         khr_swapchain: true,
         ..DeviceExtensions::none()
     };
+
+    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
+        .filter(|&p| p.supported_extensions().is_superset_of(&device_ext))
+        .filter_map(|p| {
+            p.queue_families()
+                .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
+                .map(|q| (p, q))
+        })
+        .min_by_key(|(p, _)| match p.properties().device_type {
+            PhysicalDeviceType::DiscreteGpu => 0,
+            PhysicalDeviceType::IntegratedGpu => 1,
+            PhysicalDeviceType::VirtualGpu => 2,
+            PhysicalDeviceType::Cpu => 3,
+            PhysicalDeviceType::Other => 4,
+        })
+        .unwrap();
+
     let (device, mut queues) = Device::new(
-        physical,
-        physical.supported_features(),
-        &device_ext,
-        [(queue_family, 0.5)].iter().cloned(),
+        physical_device,
+        DeviceCreateInfo {
+            enabled_extensions: physical_device.required_extensions().union(&device_ext),
+
+            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            ..Default::default()
+        },
     )
     .unwrap();
 
     let queue = queues.next().unwrap();
 
     let (mut swapchain, images) = {
-        let caps = surface.capabilities(physical).unwrap();
+        let dim: [u32; 2] = surface.window().inner_size().into();
+        let caps = physical_device
+            .surface_capabilities(&surface, Default::default())
+            .unwrap();
         let usage = caps.supported_usage_flags;
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
-        let format = caps.supported_formats[0].0;
-        let dimensions: [u32; 2] = surface.window().inner_size().into();
-        mvp.projection = perspective(
-            dimensions[0] as f32 / dimensions[1] as f32,
-            180.0,
-            0.01,
-            100.0,
+        let image_format = Some(
+            physical_device
+                .surface_formats(&surface, Default::default())
+                .unwrap()[0]
+                .0,
         );
+        mvp.projection = perspective(dim[0] as f32 / dim[1] as f32, 180.0, 0.01, 100.0);
 
-        Swapchain::start(device.clone(), surface.clone())
-            .num_images(caps.min_image_count)
-            .format(format)
-            .dimensions(dimensions)
-            .usage(usage)
-            .sharing_mode(&queue)
-            .composite_alpha(alpha)
-            .build()
-            .unwrap()
+        Swapchain::new(
+            device.clone(),
+            surface.clone(),
+            SwapchainCreateInfo {
+                min_image_count: caps.min_image_count,
+                image_format,
+                image_extent: surface.window().inner_size().into(),
+                image_usage: usage,
+                composite_alpha: alpha,
+                ..Default::default()
+            },
+        )
+        .unwrap()
     };
 
     mod vs {
@@ -144,7 +172,12 @@ void main() {
     mat4 worldview = uniforms.view * uniforms.model;
     gl_Position = uniforms.projection * worldview * vec4(position, 1.0);
     out_color = color;
-}"
+}",
+            types_meta: {
+                use bytemuck::{Pod, Zeroable};
+
+                #[derive(Clone, Copy, Zeroable, Pod)]
+            },
         }
     }
 
@@ -174,7 +207,7 @@ void main() {
             color: {
                 load: Clear,
                 store: Store,
-                format: swapchain.format(),
+                format: swapchain.image_format(),
                 samples: 1,
             },
             depth: {
@@ -273,12 +306,14 @@ void main() {
 
             if recreate_swapchain {
                 let dimensions: [u32; 2] = surface.window().inner_size().into();
-                let (new_swapchain, new_images) =
-                    match swapchain.recreate().dimensions(dimensions).build() {
-                        Ok(r) => r,
-                        Err(SwapchainCreationError::UnsupportedDimensions) => return,
-                        Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-                    };
+                let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
+                    image_extent: surface.window().inner_size().into(),
+                    ..swapchain.create_info()
+                }) {
+                    Ok(r) => r,
+                    Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
+                    Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                };
                 mvp.projection = perspective(
                     dimensions[0] as f32 / dimensions[1] as f32,
                     180.0,
@@ -322,7 +357,7 @@ void main() {
                 uniform_buffer.next(uniform_data).unwrap()
             };
 
-            let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+            let layout = pipeline.layout().set_layouts().get(0).unwrap();
             let set = PersistentDescriptorSet::new(
                 layout.clone(),
                 [WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer)],
@@ -394,22 +429,23 @@ fn window_size_dependent_setup(
 ) -> Vec<Arc<Framebuffer>> {
     let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
+    let depth_buffer = ImageView::new_default(
+        AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
+    )
+    .unwrap();
 
     images
         .iter()
         .map(|image| {
-            let view = ImageView::new(image.clone()).unwrap();
-            let depth_buffer = ImageView::new(
-                AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
+            let view = ImageView::new_default(image.clone()).unwrap();
+            Framebuffer::new(
+                render_pass.clone(),
+                FramebufferCreateInfo {
+                    attachments: vec![view, depth_buffer.clone()],
+                    ..Default::default()
+                },
             )
-            .unwrap();
-            Framebuffer::start(render_pass.clone())
-                .add(view)
-                .unwrap()
-                .add(depth_buffer.clone())
-                .unwrap()
-                .build()
-                .unwrap()
+            .unwrap()
         })
         .collect::<Vec<_>>()
 }

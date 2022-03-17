@@ -41,7 +41,7 @@ let render_pass = vulkano::ordered_passes_renderpass!(device.clone(),
             final_color: {
                 load: Clear,
                 store: Store,
-                format: swapchain.format(),
+                format: swapchain.image_format(),
                 samples: 1,
             },
             color: {
@@ -148,17 +148,19 @@ Two things about this:
 
 Now we need to attach our new buffers to the actual `Framebuffer`
 ```rust
-Framebuffer::start(render_pass.clone())
-    .add(view)
-    .unwrap()
-    .add(color_buffer.clone())
-    .unwrap()
-    .add(normal_buffer.clone())
-    .unwrap()
-    .add(depth_buffer.clone())
-    .unwrap()
-    .build()
-    .unwrap(),
+Framebuffer::new(
+    render_pass.clone(),
+    FramebufferCreateInfo {
+        attachments: vec![
+            view,
+            color_buffer.clone(),
+            normal_buffer.clone(),
+            depth_buffer.clone(),
+        ],
+        ..Default::default()
+    },
+)
+.unwrap()
 ```
 
 Nothing new here, just mind the order you declare them in. Remember that `image` here corresponds to our `final_color` attachment.
@@ -180,23 +182,20 @@ fn window_size_dependent_setup(
         images
             .iter()
             .map(|image| {
-                let view = ImageView::new(image.clone()).unwrap();
-                let depth_buffer = ImageView::new(
-                    AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM)
-                        .unwrap(),
+                let view = ImageView::new_default(image.clone()).unwrap();
+                Framebuffer::new(
+                    render_pass.clone(),
+                    FramebufferCreateInfo {
+                        attachments: vec![
+                            view,
+                            color_buffer.clone(),
+                            normal_buffer.clone(),
+                            depth_buffer.clone(),
+                        ],
+                        ..Default::default()
+                    },
                 )
-                .unwrap();
-                Framebuffer::start(render_pass.clone())
-                    .add(view)
-                    .unwrap()
-                    .add(color_buffer.clone())
-                    .unwrap()
-                    .add(normal_buffer.clone())
-                    .unwrap()
-                    .add(depth_buffer.clone())
-                    .unwrap()
-                    .build()
-                    .unwrap()
+                .unwrap()
             })
             .collect::<Vec<_>>(),
         color_buffer.clone(),
@@ -214,7 +213,10 @@ let (mut framebuffers, mut color_buffer, mut normal_buffer) =
 ```rust
 if recreate_swapchain {
     let dimensions: [u32; 2] = surface.window().inner_size().into();
-    let (new_swapchain, new_images) = match swapchain.recreate_with_dimensions(dimensions) {
+    let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
+        image_extent: surface.window().inner_size().into(),
+        ..swapchain.create_info()
+    }) {
         Ok(r) => r,
         Err(SwapchainCreationError::UnsupportedDimensions) => return,
         Err(e) => panic!("Failed to recreate swapchain: {:?}", e)
@@ -244,7 +246,12 @@ Okay, I lied, we're going to talk about shaders after all. Just a bit though.
 mod deferred_vert {
     vulkano_shaders::shader!{
         ty: "vertex",
-        path: "src/shaders/deferred.vert"
+        path: "src/shaders/deferred.vert",
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        },
     }
 }
 
@@ -258,14 +265,24 @@ mod deferred_frag {
 mod lighting_vert {
     vulkano_shaders::shader!{
         ty: "vertex",
-        path: lighting.vert
+        path: lighting.vert,
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        },
     }
 }
 
 mod lighting_frag {
     vulkano_shaders::shader!{
         ty: "fragment",
-        path: lighting.frag
+        path: lighting.frag,
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        },
     }
 }
 

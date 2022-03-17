@@ -258,7 +258,31 @@ The order we specify our `WriteDescriptorSet` in the array does not matter but t
 
 #### Back to our actual project
 
-Going back to our single-uniform-buffer project, try to run it and see what happens. If everything goes well, the same screen we had at the end of the last lesson will show up. With one exception nothing's changed because we're still using the identity matrices for our uniform input. Let's start changing that now.
+Going back to our single-uniform-buffer project, try to run it and you will likely see something like the following image.
+
+![a compiler error message saying our MVP data structure does not satisfy the BufferContents trait](./imgs/3/required_trait.png)
+
+A missing trait is normally easy enough to handle but there is an unusual problem: the data structure the error points to is in our shader. Although the text of the shader is stored in our Rust source code the compiling is actually being done by an independent bit of software. So normally the details of how data is structured inside the shader are invisible to our main program. Given this, how do we implement the required Rust traits?
+
+The answer comes in a bit of Rust macro wizardry. We'll be adding a `types_meta` argument to our vertex shader macro that will look like this:
+
+```rust
+mod vs {
+    vulkano_shaders::shader! {
+        ty: "vertex",
+        src: "....",
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        },
+    }
+}
+```
+
+This will add the necessary traits to our shader objects. On a side note, this is the main reason these traits exist. The `Zeroable` and `Pod` traits will let the Rust compiler reason about the behavior of data it's passing between the CPU and GPU in ways it otherwise couldn't. Previously, this operation was considered unsound because our Rust code just had to blindly trust that everything was specified correctly.
+
+With that new addition we can run the code and, if everything goes well, the same screen we had at the end of the last lesson will show up. With one exception nothing's changed because we're still using the identity matrices for our uniform input. Let's start changing that now.
 
 There is one difference that is probably immediately apparent to you, our triangle is upside-down now! We'll fix this in a little bit once we start setting our proper MVP matrices.
 
@@ -281,12 +305,7 @@ Once you've done that, update the sub-buffer creation screen to look like this. 
 ```rust
 let uniform_buffer_subbuffer = {
     let mvp = MVP::new();
-    let dimensions = if let Some(dimensions) = window.get_inner_size() {
-        let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
-        [dimensions.0, dimensions.1]
-    } else {
-        return;
-    };
+    let dimensions: [u32; 2] = surface.window().inner_size().into();
     let projection: TMat4<f32> = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.01, 100.0);
     let uniform_data = vs::ty::MVP_Data {
         model: mvp.model.into(),
@@ -309,12 +328,7 @@ We'll take advantage of a method called `look_at()` to set our view matrix. It t
 ```rust
 let uniform_buffer_subbuffer = {
     let mvp = MVP::new();
-    let dimensions = if let Some(dimensions) = window.get_inner_size() {
-        let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
-        [dimensions.0, dimensions.1]
-    } else {
-        return;
-    };
+    let dimensions: [u32; 2] = surface.window().inner_size().into();
     let projection: TMat4<f32> = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.0, -100.0);
     let view: TMat4<f32> = look_at(&vec3(0.0, 0.0, 0.01), &vec3(0.0, 0.0, 0.0), &vec3(0.0, -1.0, 0.0));
     let uniform_data = vs::ty::MVP_Data {
@@ -356,12 +370,7 @@ The model matrix holds all the transformations we want to do to a particular mod
 ```rust
 let uniform_buffer_subbuffer = {
     let mvp = MVP::new();
-    let dimensions = if let Some(dimensions) = window.get_inner_size() {
-        let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
-        [dimensions.0, dimensions.1]
-    } else {
-        return;
-    };
+    let dimensions: [u32; 2] = surface.window().inner_size().into();
     let projection: TMat4<f32> = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.0, -100.0);
     let view: TMat4<f32> = look_at(&vec3(0.0, 0.0, 0.01), &vec3(0.0, 0.0, 0.0), &vec3(0.0, -1.0, 0.0));
     let model: TMat4<f32> = translate(&identity(), &vec3(1.0, -1.0, 0.0));

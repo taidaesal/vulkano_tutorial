@@ -85,12 +85,14 @@ let vp_buffer = CpuAccessibleBuffer::from_data(
 ```rust
 if recreate_swapchain {
     let dimensions: [u32; 2] = surface.window().inner_size().into();
-    let (new_swapchain, new_images) =
-        match swapchain.recreate().dimensions(dimensions).build() {
-            Ok(r) => r,
-            Err(SwapchainCreationError::UnsupportedDimensions) => return,
-            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-        };
+    let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
+        image_extent: surface.window().inner_size().into(),
+        ..swapchain.create_info()
+    }) {
+        Ok(r) => r,
+        Err(SwapchainCreationError::UnsupportedDimensions) => return,
+        Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+    };
     vp.projection = perspective(
         dimensions[0] as f32 / dimensions[1] as f32,
         180.0,

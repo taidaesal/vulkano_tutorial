@@ -83,7 +83,7 @@ let (texture, tex_future) = {
         queue.clone(),
     )
     .unwrap();
-    (ImageView::new(image).unwrap(), future)
+    (ImageView::new_default(image).unwrap(), future)
 };
 ```
 
@@ -195,7 +195,7 @@ let (texture, tex_future) = {
         queue.clone(),
     )
     .unwrap();
-    (ImageView::new(image).unwrap(), future)
+    (ImageView::new_default(image).unwrap(), future)
 };
 ```
 
@@ -244,7 +244,7 @@ fn main() {
                 queue.clone(),
             )
             .unwrap();
-            (ImageView::new(image).unwrap(), future)
+            (ImageView::new_default(image).unwrap(), future)
         };
         
         // ...

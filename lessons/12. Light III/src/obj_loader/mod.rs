@@ -1,4 +1,4 @@
-// Copyright (c) 2021 taidaesal
+// Copyright (c) 2022 taidaesal
 // Licensed under the MIT license
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>
 
@@ -6,6 +6,7 @@ mod face;
 mod loader;
 mod vertex;
 pub use self::loader::Loader;
+use bytemuck::{Pod, Zeroable};
 
 use std::fmt;
 
@@ -13,7 +14,8 @@ use std::fmt;
 /// data for rendering passes that do not require geometry data.
 /// This is due to a quirk of the Vulkan API in that *all*
 /// render passes require some sort of input.
-#[derive(Default, Debug, Clone)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
 pub struct DummyVertex {
     /// A regular position vector with the z-value shaved off for space.
     /// This assumes the shaders will take a `vec2` and transform it as
@@ -66,7 +68,8 @@ impl DummyVertex {
 }
 
 /// A structure for the vertex information used in earlier lessons
-#[derive(Default, Debug, Clone)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
 pub struct ColoredVertex {
     pub position: [f32; 3],
     pub color: [f32; 3],
@@ -74,7 +77,8 @@ pub struct ColoredVertex {
 
 /// A structure used for the vertex information starting
 /// from our lesson on lighting
-#[derive(Default, Debug, Clone)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
 pub struct NormalVertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],

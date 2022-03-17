@@ -144,8 +144,11 @@ impl System {
     ) {
         let dimensions = images[0].dimensions().width_height();
         viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
-
-        let color_buffer = ImageView::new(
+        let depth_buffer = ImageView::new_default(
+            AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
+        )
+        .unwrap();
+        let color_buffer = ImageView::new_default(
             AttachmentImage::transient_input_attachment(
                 device.clone(),
                 dimensions,
@@ -154,7 +157,7 @@ impl System {
             .unwrap(),
         )
         .unwrap();
-        let normal_buffer = ImageView::new(
+        let normal_buffer = ImageView::new_default(
             AttachmentImage::transient_input_attachment(
                 device.clone(),
                 dimensions,
@@ -163,8 +166,7 @@ impl System {
             .unwrap(),
         )
         .unwrap();
-
-        let frag_location_buffer = ImageView::new(
+        let frag_location_buffer = ImageView::new_default(
             AttachmentImage::transient_input_attachment(
                 device.clone(),
                 dimensions,
@@ -173,7 +175,7 @@ impl System {
             .unwrap(),
         )
         .unwrap();
-        let specular_buffer = ImageView::new(
+        let specular_buffer = ImageView::new_default(
             AttachmentImage::transient_input_attachment(
                 device.clone(),
                 dimensions,
@@ -187,27 +189,22 @@ impl System {
             images
                 .iter()
                 .map(|image| {
-                    let view = ImageView::new(image.clone()).unwrap();
-                    let depth_buffer = ImageView::new(
-                        AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM)
-                            .unwrap(),
+                    let view = ImageView::new_default(image.clone()).unwrap();
+                    Framebuffer::new(
+                        render_pass.clone(),
+                        FramebufferCreateInfo {
+                            attachments: vec![
+                                view,
+                                color_buffer.clone(),
+                                normal_buffer.clone(),
+                                frag_location_buffer.clone(),
+                                specular_buffer.clone(),
+                                depth_buffer.clone(),
+                            ],
+                            ..Default::default()
+                        },
                     )
-                    .unwrap();
-                    Framebuffer::start(render_pass.clone())
-                        .add(view)
-                        .unwrap()
-                        .add(color_buffer.clone())
-                        .unwrap()
-                        .add(normal_buffer.clone())
-                        .unwrap()
-                        .add(frag_location_buffer.clone())
-                        .unwrap()
-                        .add(specular_buffer.clone())
-                        .unwrap()
-                        .add(depth_buffer.clone())
-                        .unwrap()
-                        .build()
-                        .unwrap()
+                    .unwrap()
                 })
                 .collect::<Vec<_>>(),
             color_buffer.clone(),
@@ -216,7 +213,6 @@ impl System {
             specular_buffer.clone(),
         )
     }
-}
 ```
 
 Note that we also added our new buffers to the sub-pass input and outputs as appropriate. Both attachments will be used as output targets in the geometry sub-pass and will be used as input attachments in our lighting sub-pass.

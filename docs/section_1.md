@@ -14,28 +14,28 @@ The first thing we'll do is creating our `Cargo.toml` file. The dependencies lis
 ```toml
 [package]
 name = "example_project"
-version = "0.28.0"
+version = "0.29.0"
 authors = ["your_name"]
 edition = "2021"
 
 [dependencies]
-vulkano = "0.28.0"
+vulkano = "0.29.0"
 winit = "0.26.0"
-vulkano-win = "0.28.0"
-vulkano-shaders = "0.28.0"
+vulkano-win = "0.29.0"
+vulkano-shaders = "0.29.0"
 
 ```
 
 Let's go over the dependencies one by one.
 ```toml
-vulkano = "0.28.0"
+vulkano = "0.29.0"
 ```
 This is the main library ("crate" in Rust-speak) that we'll be using. This crate wraps the Vulkan API with its own Rust API so that we can call it from our application. We could use the Vulkan API directly if we really wanted to but that would be far more difficult than necessary as well as producing ugly code that doesn't follow Rust idioms. This is because the main Vulkan API is in C and can only be interacted with using Rust's Foreign Function Interface (FFI) mechanism. Although Rust is designed to interface with C when necessary, why would we do that when we have a lovely crate to wrap it all up in a nice Rusty bow for us?
 
 There is a small trade-off here because if you want to go from using Vulkano to using Vulkan directly there will be a learning curve as you get to grips with the native C API. However, learning Vulkano will teach you all the core concepts of Vulkan so it likely won't be that much work to make the change later.
 
 ```toml
-winit = "0.2526.0"
+winit = "0.26.0"
 ```
 
 This crate solves a problem that surprises a lot of people learning about graphics programming for the first time: our main graphics API (Vulkan in this case) doesn't actually provide a way to show anything on the screen! On first glance this seems a bit crazy. After all, isn't the whole *point* of something like Vulkan or OpenGL to show something on the screen? Well, yes and no.
@@ -43,13 +43,13 @@ This crate solves a problem that surprises a lot of people learning about graphi
 The key thing to keep in mind is that Vulkan is how we use our *hardware* (usually a graphics card, sometimes integrated rendering hardware) to turn data into graphical output. However, the actual user interface (UI) is a bit of *software* that's provided by the host operating system. Vulkan, like OpenGL before it, is explicitly operating system agnostic which is just a fancy way of saying that it will never contain code that will only work on Windows or Linux or any other single platform. To interact with the operating system itself and do things like open windows or get user input we need to use a second crate.
 
 ```toml
-vulkano-win = "0.28.0"
+vulkano-win = "0.29.0"
 ```
 
 This is the other part of our "how do we get Vulkan to talk to our UI" problem. The `winit` crate lets us open a window for whatever operating system we're using but there still needs to be a connection between our new window and our graphics API. This crate is a small bit of code that lets us go "hey, you can put your graphics in this window." It would be possible to roll this functionality into the same crate as the window-handling code and this is the strategy used by a number of other libraries you might find out there; however, the `winit` maintainers have kept a tight focus on their project scope.
 
 ```toml
-vulkano-shaders = "0.28.0"
+vulkano-shaders = "0.29.0"
 ```
 
 I'm kind of cheating by listing this dependency in this section since we won't be using it for this lesson, but we will be using it in every other one so we might as well talk about it now.
@@ -67,14 +67,16 @@ The first section is straight-forward enough as it's just the list of dependenci
 
 ```rust
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
-use vulkano::device::physical::PhysicalDevice;
-use vulkano::device::{Device, DeviceExtensions};
+use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
+use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, SwapchainImage};
-use vulkano::instance::Instance;
+use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::pipeline::graphics::viewport::Viewport;
-use vulkano::render_pass::{Framebuffer, RenderPass};
-use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass};
+use vulkano::swapchain::{
+    self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
 
@@ -94,33 +96,30 @@ The first block of actual Vulkano code we're going to write is where we declare 
 ```rust
 let instance = {
     let extensions = vulkano_win::required_extensions();
-    Instance::new(None, Version::V1_1, &extensions, None).unwrap()
+    Instance::new(InstanceCreateInfo {
+        enabled_extensions: extensions,
+        max_api_version: Some(Version::V1_1),
+        ..Default::default()
+    })
+    .unwrap()
 };
 ```
 
-Two things to note. On the second line, `let extensions = ...`. The Vulkan specification separates core features from those which are considered optional. Rendering to a screen is one of these optional features and we need to specifically request that our created `Instance` contains it. We can get all necessary optional features by asking `vulkano_win` what it requires. A second thing to note is `Version::V1_1`. This is how we declare the *minimum* version of Vulkan we want. We can use Vulkan functions from higher versions but if the software or hardware doesn't meet this minimum requirement the program will refuse to run.
+A few things to note. On the second line, `let extensions = ...`. The Vulkan specification separates core features from those which are considered optional. Rendering to a screen is one of these optional features and we need to specifically request that our created `Instance` contains it. We can get all necessary optional features by asking `vulkano_win` what it requires. A second thing to note is `Version::V1_1`. This is how we declare the *minimum* version of Vulkan we want. We can use Vulkan functions from higher versions but if the software or hardware doesn't meet this minimum requirement the program will refuse to run.
 
 If it seems strange that actually showing an image is considered "optional" by our graphics API remember the discussion earlier about how showing anything on the UI is considered outside the scope of the main Vulkan specification. In addition, the Vulkan API lets you use your graphics hardware for many things, not all of which require the ability to display it somewhere. We won't be getting into the full range of possibility in these tutorials, but it's a good demonstration of Vulkan's approach of leaving it to the programmer to specify anything that might have more than one option.
 
-#### Physical Device
-
-After we've created our `Instance` we need to find the physical device to use for rendering. What this means is that we need to identify all the pieces of hardware our program can see and decide which one of them we want to use. In practice this usually means finding the user's graphics card.
-
-```rust
-let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-```
-
-This simple line of code will do what we want, but does gloss over a few complications that would need to be sorted out before using it in a production setting. Specifically, any production code needs to explicitly check that the `PhysicalDevice` chosen supports all our optional extensions and that we can draw to our rendering surface (the UI window we'll be creating later). In addition, if there are multiple devices found we should probably also let the user choose which one they want to use. For now though, we'll just pick the first device we find and go with it.
-
-Note the use of `instance` in there. This is typical for how we use Vulkan `Instance`s and we'll be seeing it in pretty much every block of code from now on.
+Lastly, a note on the use of the `InstanceCreateInfo` struct which is taken as an argument to `Instance::new`. This might strike people with existing Rust experience as odd. When a Rust developer needs to set up a complex struct they typically reach for the [builder pattern](https://rust-unofficial.github.io/patterns/patterns/creational/builder.html) rather than passing in a different struct. However, this is a decision the Vulkano team made to more closely match how the Vulkan API works. In Vulkan each object the program works with is created with a corresponding `info` object that controls all of the various flags to be passed in. By keeping closer to the base Vulkan program structure, the Vulkano team removes some of the barriers to entry that a Vulkan C/C++ developer might have trying to use Vulkano with Rust. We will see this pattern many more times to come.
 
 #### UI Window
 
-Now we can create our UI window. This will be what the user actually sees when they launch the application and will be where all our fancy graphics will (eventually) end up. Anyone who's fiddled with video game graphics settings will know that there are a *lot* of details that need to be considered when deploying a graphical application to end-users. Thankfully, this is a tutorial and we'll be skating by with only the minimum.
+Now that we have a Vulkan instance to work with, we can create our basic window. This will be what the user actually sees when they launch the application and will be where all our fancy graphics will (eventually) end up. Anyone who's fiddled with video game graphics settings will know that there are a *lot* of details that need to be considered when deploying a graphical application to end-users. Thankfully, this is a tutorial and we'll be skating by with only the minimum.
 
 ```rust
 let event_loop = EventLoop::new();
-let surface = WindowBuilder::new().build_vk_surface(&event_loop, instance.clone()).unwrap();
+let surface = WindowBuilder::new()
+    .build_vk_surface(&event_loop, instance.clone())
+    .unwrap();
 ```
 
 A couple things to note here:
@@ -129,44 +128,108 @@ A couple things to note here:
 
 `surface` is the only thing that Vulkan actually cares about. A Vulkan "surface" is something that Vulkan can render to. In other words, it's a place that Vulkan can stick the output once it gets done running all the fancy shaders and complicated rendering operations. This is not *quite* the same thing as a UI window. To take our surface and wrap it in a UI window our operating system can actually use we need the `winit` crate.
 
-#### Queue Families
 
-Next we come to one of the things that really sets Vulkan apart from its predecessor, OpenGL, queues and queue families. OpenGL is a *synchronous* API. What this means is that our application sends a request to the graphics card through the API and then waits until it hears back before continuing. This has the advantage of being very simple and intuitive but is also where OpenGL shows its age.
+#### Physical Device and Queue Family
+
+After we've created our `Instance` and a `surface` to render to  we need to find the physical device to use for rendering. What this means is that we need to identify all the pieces of hardware our program can see and decide which one of them we want to use. In practice this usually means finding the user's graphics card. This is also where we first meet one of the things that really sets Vulkan apart from its predecessor, OpenGL, queues and queue families. OpenGL is a *synchronous* API. What this means is that our application sends a request to the graphics card through the API and then waits until it hears back before continuing. This has the advantage of being very simple and intuitive but is also where OpenGL shows its age.
 
 Modern computers are heavily based around the idea of *asynchronous* operations. That is, one application can have many things happening at the same time without needing to wait ("block") for one to finish before starting another. The way Vulkan taps into this newer design philosophy is by using *queues*. Rather than sending commands one at a time to the graphics card and waiting for a reply, in Vulkan we create lists of commands and upload them all at once to the graphics card. The graphics card will then start executing each command in sequence and our main app will continue on immediately without waiting to hear back.
 
-The difference between Vulkan `Queue`s and `QueueFamily`s can be thought of this way: the `QueueFamily` is the *type* of operation we can do whereas a `Queue` is an instance of that type of operation. We will use the `Queue` data type later to submit our operations to the graphics card.
+The difference between Vulkan `Queue`s and `QueueFamily`s can be thought of this way: the `QueueFamily` is the *type* of operation we can do whereas a `Queue` is an instance of that type of operation. We will create a `Queue` later in the lesson but it is convenient for us to find the `PhysicalDevice` and the `QueueFamily` at the same time.
 
 ```rust
-let queue_family = physical.queue_families().find(|&q| {
-    q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
-}).unwrap();
+let device_ext = DeviceExtensions {
+    khr_swapchain: true,
+    ..DeviceExtensions::none()
+};
+
+let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
+    .filter(|&p| p.supported_extensions().is_superset_of(&device_ext))
+    .filter_map(|p| {
+        p.queue_families()
+            .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
+            .map(|q| (p, q))
+    })
+    .min_by_key(|(p, _)| match p.properties().device_type {
+        PhysicalDeviceType::DiscreteGpu => 0,
+        PhysicalDeviceType::IntegratedGpu => 1,
+        PhysicalDeviceType::VirtualGpu => 2,
+        PhysicalDeviceType::Cpu => 3,
+        PhysicalDeviceType::Other => 4,
+    })
+    .unwrap();
 ```
 
-Here we ask for a single `QueueFamily` object, one which supports drawing operations. Later, we'll add a second `QueueFamily` to handle moving data from our application to the local memory of the graphics card. But for now we're keeping it simple.
+That seems rather complicated but, luckily, most of that complication comes from the way it uses Rust mapping functions rather than Vulkano itself. We'll go though bit by bit.
 
-A couple things to note:
+```rust
+let device_ext = DeviceExtensions {
+    khr_swapchain: true,
+    ..DeviceExtensions::none()
+};
+```
 
-- The `QueueFamily` objects we have to choose from are provided by our physical rendering device (i.e. our graphics card) and we will often have optional `QueueFamily`s which are supported by the physical device but which our program does not instantiate. If you decide you want to use a new kind of `QueueFamily` remember that you **must** ask for it here.
-- As we iterate through the list of possible `QueueFamily` objects we look for one that supports graphical output *and* that our `surface` supports. That second step is very important as not every possible Vulkan `Surface` supports every type of `QueueFamily`. If you're a developer running through this tutorial it's unlikely that you'll run into a problem with this, but it's something you'll need to put a lot of thought into if you want to ship something other people can actually use reliably.
+Just like with our `Instance` earlier, optional features are specified via the relevant _extensions_. In our case, we want to make sure we can use a `Swapchain` with our physical device. We'll see what that means in a bit. 
+
+```rust
+let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
+```
+
+If you haven't used a language which features it, Rust allows multiple-assignment where multiple variables can be declared or modified in a single statement. The vulkan-specific code is `PhysicalDevice::enumerate(&instance)` which will just list every physical device our `Instance` can see.
+
+```rust
+.filter(|&p| p.supported_extensions().is_superset_of(&device_ext))
+```
+
+This takes the list we got on the first line and filters each item. First it queries which extensions it supports and checks that it is a superset of the set of extensions we want. It's totally normal that a physical device will support more extensions than we want or will use, but it absolutely must meet the minimum standards we declared with `device_ext`. In this case, we would not even be able to render to the target if we picked a physical device that did not support `khr_swapchain`. The output of `.filter` will be all items in the list which evaluated as `true` in the [closure](https://doc.rust-lang.org/rust-by-example/fn/closures.html) (also sometimes called a _lambda function_).
+
+```rust
+.filter_map(|p| {
+    p.queue_families()
+        .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
+        .map(|q| (p, q))
+})
+```
+
+This is where we bring the `QueueFamily` into the equation. For each of the physical devices we found in the last section we query what queue families it supports. And for each of those queue families we check that it supports graphical output (remember, not every Vulkan target will!) and that it is supported by the actual `Surface` we've created. For each queue family that passes this test we return a tuple that contains the physical device and the queue family.
+
+```rust
+.min_by_key(|(p, _)| match p.properties().device_type {
+    PhysicalDeviceType::DiscreteGpu => 0,
+    PhysicalDeviceType::IntegratedGpu => 1,
+    PhysicalDeviceType::VirtualGpu => 2,
+    PhysicalDeviceType::Cpu => 3,
+    PhysicalDeviceType::Other => 4,
+})
+.unwrap();
+```
+
+This section is technically optional but I thought it would be a good idea to have it anyway. At this point we might have multiple physical devices which meet our technical needs. That is, they could run our code without crashing and show the right image on the screen. For anything we're going to be doing that's totally fine as we aren't going to even come close to taxing what modern graphics hardware is capable of. But, like any gamer could tell you, not all graphics hardware is created equal. If we have the choice, we want to prefer a dedicated graphics card to an integrated solution. This is a quick bit of code that will organize all our options into a priority list and choose the one that scores the best.
 
 #### Device
 
 Now that we've finished querying information about the physical device we'll be using, we need to create a `Device` object. This is the *software* representation of the hardware being stored in our `physical` variable. As part of creating our `Device` we will set up a number of configuration options and, on creation, will receive both an instance of `Device` as well as a list of `Queue`s we can use to submit operations to the `Device`.
 
 ```rust
-let device_ext = DeviceExtensions { khr_swapchain: true, .. DeviceExtensions::none() };
-let (device, mut queues) = Device::new(physical, physical.supported_features(), &device_ext,
-                                       [(queue_family, 0.5)].iter().cloned()).unwrap();
+let (device, mut queues) = Device::new(
+    physical_device,
+    DeviceCreateInfo {
+        enabled_extensions: physical_device.required_extensions().union(&device_ext),
+
+        queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+        ..Default::default()
+    },
+)
+.unwrap();
 ```
 
-Like we've seen in other places, we need to consider which optional extensions we want to have enabled at any particular time. With `device_ext` we indicate we want the swapchain extension (swapchains will be explained in a bit) but will otherwise accept the default.
+Like we've seen in other places, we need to consider which optional extensions we want to have enabled at any particular time. With `device_ext` we indicate we want the swapchain extension but will otherwise accept the default. Note also the `Info` struct pattern in use again here.
 
 For the creation of the `Device` itself we need to provide it the `PhysicalDevice` to use, the list of features supported by the `PhysicalDevice`, as well as a list of `QueueFamily` objects. The exact format is an iterator of tuples of the form `(QueueFamily, f32)` where the float is a priority value between `0.0` and `1.0`. We will mostly ignore the priority argument in these tutorials and will revisit the list when it comes time to add a second queue for data transfer operations.
 
 #### Queues
 
-As part of creating our `Device` instance, we also have an iterator of available `Queue`s. In this example we just use a single queue so the code is simple. We'll expand this in a later tutorial.
+As part of creating our `Device` instance, we also have an iterator of available `Queue`s. In this example we just use a single queue so the code is simple. We'll expand this in a later tutorial. We will be using our singular queue to submit rendering operations to the graphics card.
 
 ```rust
 let queue = queues.next().unwrap();
@@ -182,21 +245,31 @@ This can be a bit hard to visualize at first, but it's something any gamer will 
 
 ```rust
 let (mut swapchain, images) = {
-    let caps = surface.capabilities(physical).unwrap();
+    let caps = physical_device
+        .surface_capabilities(&surface, Default::default())
+        .unwrap();
     let usage = caps.supported_usage_flags;
     let alpha = caps.supported_composite_alpha.iter().next().unwrap();
-    let format = caps.supported_formats[0].0;
-    let dimensions: [u32; 2] = surface.window().inner_size().into();
+    let image_format = Some(
+        physical_device
+            .surface_formats(&surface, Default::default())
+            .unwrap()[0]
+            .0,
+    );
 
-    Swapchain::start(device.clone(), surface.clone())
-        .num_images(caps.min_image_count)
-        .format(format)
-        .dimensions(dimensions)
-        .usage(usage)
-        .sharing_mode(&queue)
-        .composite_alpha(alpha)
-        .build()
-        .unwrap()
+    Swapchain::new(
+        device.clone(),
+        surface.clone(),
+        SwapchainCreateInfo {
+            min_image_count: caps.min_image_count,
+            image_format,
+            image_extent: surface.window().inner_size().into(),
+            image_usage: usage,
+            composite_alpha: alpha,
+            ..Default::default()
+        },
+    )
+    .unwrap()
 };
 ```
 
@@ -204,11 +277,9 @@ let (mut swapchain, images) = {
 
 `alpha` lets us set the blending factor for the `Image`s. This can be used for very specific effects if you want, but for most use-cases it's fine to just do what we do here.
 
-`format` is the format of the `Image`s. Remember that an `Image` is, in effect, a multi-dimensional array. The format is how we record the number of array dimensions as well as the type of data being stored in the array.
+`image_format` is the format of the `Image`s. Remember that an `Image` is, in effect, a multi-dimensional array. The format is how we record the number of array dimensions as well as the type of data being stored in the array.
 
-`dimensions` is just the size of our window. There are actually a number of complications with how drivers decide what counts as a "sensible" image size. Using Vulkano we can mostly ignore that and just ask our `winit` window what size it requires.
-
-There are too many arguments being passed to `Swapchain::start` to be worth covering here, particularly since we'll be using the code listed above throughout the rest of our tutorial. It's safe to leave it alone until you decide to explore the more complete range of options `Swapchain` gives us.
+There are too many arguments being passed to `Swapchain::new` to be worth covering here, particularly since we'll be using the code listed above throughout the rest of our tutorial. It's safe to leave it alone until you decide to explore the more complete range of options `Swapchain` gives us.
 
 #### Shaders
 
@@ -227,7 +298,7 @@ let render_pass = vulkano::single_pass_renderpass!(
         color: {
             load: Clear,
             store: Store,
-            format: swapchain.format(),
+            format: swapchain.image_format(),
             samples: 1,
         }
     },
@@ -241,7 +312,7 @@ let render_pass = vulkano::single_pass_renderpass!(
 
 You see here that we've declared a single framebuffer attachment and named it `color`. In reality, we could name it pretty much anything we'd like but it's idiomatic to name your attachments after their function. This attachment is a color type attachment so we just name it that.
 
-Going through the options in the attachment now we have `load: Clear` which tells Vulkan that the contents of the framebuffer should be cleared at the start of the render pass, `store: Store` which tells Vulkan that we want to store the results of the render pass in this attachment, `format: swapchain.format()` is where we set the format of the render attachment to be the same as the format of our swapchain, and `samples: 1` indicates that we're not using multi-sampling.
+Going through the options in the attachment now we have `load: Clear` which tells Vulkan that the contents of the framebuffer should be cleared at the start of the render pass, `store: Store` which tells Vulkan that we want to store the results of the render pass in this attachment, `format: swapchain.image_format()` is where we set the image format of the render attachment to be the same as the format of our swapchain, and `samples: 1` indicates that we're not using multi-sampling.
 
 Under `pass:` you see that we only have a single render pass, and that render pass contains a single attachment. If we wanted to have an attachment to, say, store normals data we'd need to remember to add it here.
 
@@ -273,7 +344,7 @@ When we declared our `Renderpass` object earlier we also declared a single "fram
 let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 ```
 
-The `window_size_dependent_setup` helper function will be listed shortly, but right now take a look at the arguments. The first argument is for `Image`s which, remember, are just Vulkan-speak for data buffers. The second argument is where we give it our render pass for it to be attached to, which is where we connect the actual `Framebuffer`s to their declaration in the `Renderpass`, and the last argument is a `DynamicState` struct which we pass to let us avoid having to recreate everything if the window changes size.
+The `window_size_dependent_setup` helper function will be listed shortly, but right now take a look at the arguments. The first argument is for `Image`s which, remember, are just Vulkan-speak for data buffers. The second argument is where we give it our render pass for it to be attached to, which is where we connect the actual `Framebuffer`s to their declaration in the `Renderpass`, and the last argument is the viewport struct we created earlier.
 
 ```rust
 fn window_size_dependent_setup(
@@ -287,12 +358,15 @@ fn window_size_dependent_setup(
     images
         .iter()
         .map(|image| {
-            let view = ImageView::new(image.clone()).unwrap();
-            Framebuffer::start(render_pass.clone())
-                .add(view)
-                .unwrap()
-                .build()
-                .unwrap()
+            let view = ImageView::new_default(image.clone()).unwrap();
+            Framebuffer::new(
+                render_pass.clone(),
+                FramebufferCreateInfo {
+                    attachments: vec![view],
+                    ..Default::default()
+                },
+            )
+            .unwrap()
         })
         .collect::<Vec<_>>()
 }
@@ -330,7 +404,7 @@ Each time we submit a set of commands to the graphics hardware we get an object 
 The code for our program loop is simple: it's nothing but an infinite loop that we break out of on certain conditions like window close events. However, this is really the place where all the magic happens. If you're writing a game 99% of your code will take place here.
 
 ```rust
-event_loop.run(move |event, _, control_flow| {
+event_loop.run(move |event, _, control_flow| match event {
     // exciting stuff goes here
 });
 ```
@@ -346,12 +420,18 @@ The first thing we need to add to our loop is a `match` statement to parse the d
 ```rust
 event_loop.run(move |event, _, control_flow| {
     match event {
-        Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
+        Event::WindowEvent {
+            event: WindowEvent::CloseRequested,
+            ..
+        } => {
             *control_flow = ControlFlow::Exit;
-        },
-        Event::WindowEvent { event: WindowEvent::Resized(_), .. } => {
+        }
+        Event::WindowEvent {
+            event: WindowEvent::Resized(_),
+            ..
+        } => {
             recreate_swapchain = true;
-        },
+        }
         Event::RedrawEventsCleared => {
           // do our render operations here
         },
@@ -382,27 +462,23 @@ We mentioned at the start of this section that the swapchain can become invalid 
 
 ```rust
 if recreate_swapchain {
-    let dimensions: [u32; 2] = surface.window().inner_size().into();
-    let (new_swapchain, new_images) =
-        match swapchain.recreate().dimensions(dimensions).build() {
-            Ok(r) => r,
-            Err(SwapchainCreationError::UnsupportedDimensions) => return,
-            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-        };
+    let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
+        image_extent: surface.window().inner_size().into(),
+        ..swapchain.create_info()
+    }) {
+        Ok(r) => r,
+        Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
+        Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+    };
 
     swapchain = new_swapchain;
-    framebuffers = window_size_dependent_setup(
-        &new_images,
-        render_pass.clone(),
-        &mut viewport,
-    );
+    framebuffers =
+        window_size_dependent_setup(&new_images, render_pass.clone(), &mut viewport);
     recreate_swapchain = false;
 }
 ```
 
-The first step is to retrieve the current size of the window, which we can do using the same code we used when creating the swapchain in the first place.
-
-The next block is the most interesting part. As you can see, Vulkano supplies a very useful helper method, `recreate().dimensions()`, that lets us produce a new swapchain using all the options and capabilities of an old one. This saves us quite a bit of code compared to where we initially created our swapchain. The return values are, just like when we initially created our swapchain, a `Swapchain` object and a `Vec` of `Image`s. We'll replace the old values with these new values in just a moment. The last thing to take note of is the error handling. We accept the `SwapchainCreationError::UnsupportedDimensions` error and continue as this is usually a spurious error generated when the user is currently resizing the window. We can just repeat the loop until swapchain creation succeeds in this case.
+As you can see, Vulkano supplies a very useful helper method, `recreate().dimensions()`, that lets us produce a new swapchain using all the options and capabilities of an old one. This saves us quite a bit of code compared to where we initially created our swapchain. The return values are, just like when we initially created our swapchain, a `Swapchain` object and a `Vec` of `Image`s. We'll replace the old values with these new values in just a moment. The last thing to take note of is the error handling. We accept the `SwapchainCreationError::UnsupportedDimensions` error and continue as this is usually a spurious error generated when the user is currently resizing the window. We can just repeat the loop until swapchain creation succeeds in this case.
 
 The last thing to take note of is that we also need to recreate our framebuffers. This is because our framebuffers depends on the `Image`s stored in the swapchain. If one changes the other must follow. There aren't any hidden complications here and we can just use our `window_size_dependent_setup` helper function as before.
 
@@ -448,9 +524,18 @@ Recent changes to the Vulkano library have separated this process into two steps
 2: Finalize the commands and create the final `CommandBuffer`
 
 ```rust
-let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary(device.clone(), queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
+let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary(
+    device.clone(),
+    queue.family(),
+    CommandBufferUsage::OneTimeSubmit,
+)
+.unwrap();
 cmd_buffer_builder
-    .begin_render_pass(framebuffers[image_num].clone(), SubpassContents::Inline, clear_values)
+    .begin_render_pass(
+        framebuffers[image_num].clone(),
+        SubpassContents::Inline,
+        clear_values,
+    )
     .unwrap()
     .end_render_pass()
     .unwrap();
@@ -470,8 +555,12 @@ Lastly, our `CommandBuffer` is actually created when we call `.build`
 Now that we have our buffer, we need to schedule it to run. If this looks more complicated than necessary, remember that we might have a number of things going on at the same time and we need to make sure that our command buffer isn't executed before everything is ready for it.
 
 ```rust
-let future = previous_frame_end.join(acquire_future)
-    .then_execute(queue.clone(), command_buffer).unwrap()
+let future = previous_frame_end
+    .take()
+    .unwrap()
+    .join(acquire_future)
+    .then_execute(queue.clone(), command_buffer)
+    .unwrap()
     .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
     .then_signal_fence_and_flush();
 ```

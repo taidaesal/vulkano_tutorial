@@ -191,7 +191,7 @@ let ambient_light = AmbientLight { color: [1.0, 1.0, 1.0], intensity: 1.0 };
 #### Shader updates
 
 We need to update our shaders to accept a new uniform input as well as use it. As part of this we will only need to make changes to our fragment shader.
-```rust
+```glsl
 #version 450
 layout(location = 0) in vec3 in_color;
 
@@ -347,7 +347,12 @@ gl_Position = uniforms.projection * worldview * vec4(position, 1.0);
 out_color = color;
 out_normal = mat3(uniforms.model) * normal;
 frag_pos = vec3(uniforms.model * vec4(position, 1.0));
-}"
+}",
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        }
     }
 }
 
@@ -380,12 +385,17 @@ void main() {
     vec3 combined_color = (ambient_color + directional_color) * in_color;
     f_color = vec4(combined_color, 1.0);
 }
-"
+",
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        }
     }
 }
 ```
 
-It's a lot to take in, but we aren't introducing any concepts you haven't seen before. Just another uniform input and some extra data being passed between the two shaders
+It's a lot to take in, but we aren't introducing any concepts you haven't seen before. Just another uniform input and some extra data being passed between the two shaders. One thing to note is that we have added a `types_meta` argument to our fragment shader macro. This is necessary to use uniform buffers with our fragment shader.
 
 #### Buffer and sub-buffer
 

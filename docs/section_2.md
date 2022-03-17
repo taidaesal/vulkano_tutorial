@@ -20,15 +20,20 @@ In Vulkan `Vertex` has a special meaning on top of the usual meaning, it is the 
 Outside the `main` function let's define the following struct which we'll use for this lesson.
 
 ```rust
-#[derive(Default, Debug, Clone)]
-struct Vertex { position: [f32; 3] }
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
+struct Vertex {
+    position: [f32; 3],
+}
 vulkano::impl_vertex!(Vertex, position);
+
 ```
 
 note that our helper method takes the name of the struct as well as the data field as arguments. We can pass in multiple fields this way as well as ignore other fields if we want. The following is just an example so don't put it in your code, but it shows what we can do.
 
 ```rust
-#[derive(Default, Debug, Clone)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
 struct MyStruct {
     position: [f32; 3],
     uv: [f32; 2],
@@ -38,6 +43,10 @@ vulkano::impl_vertex!(MyStruct, position, uv);
 ```
 
 In this example we have applied the `Vertex` trait to `position` and `uv` but *not* to `name`. Note also that it can handle arguments of different data types.
+
+#### Memory
+
+You may be wondering what all those strange `#[]` commands are. It all comes down to how memory is being represented internally and is a bit out of the scope of this tutorial. In Rust, 99% of the time you don't have to care how the compiler is storing your data in memory but this is one of the 1% of the time where we can't just blindly trust the compiler to figure out what we need. The details are highly technical but if you want to investigate further you can check out the [pull-request](https://github.com/vulkano-rs/vulkano/pull/1853) on GitHub which added these features in. We won't be dwelling on the topic going forward but I wanted to point it out because we will see some minor memory weirdness in a later lesson.
 
 #### Shaders
 
@@ -101,14 +110,14 @@ Along with the shader declaration, this is the other major item we skipped talki
 
 ```rust
 let pipeline = GraphicsPipeline::start()
-        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
-        .input_assembly_state(InputAssemblyState::new())
-        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
-        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-        .build(device.clone())
-        .unwrap();
+    .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+    .vertex_shader(vs.entry_point("main").unwrap(), ())
+    .input_assembly_state(InputAssemblyState::new())
+    .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+    .fragment_shader(fs.entry_point("main").unwrap(), ())
+    .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+    .build(device.clone())
+    .unwrap();
 ```
 
 In understanding how to read this, keep in mind that each function call gets called in order. Reading it line by line lets us see how data will flow through our shaders to produce output.

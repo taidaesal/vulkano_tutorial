@@ -126,44 +126,69 @@ Our next change is to move our shader module declarations outside our `main` met
 
 ```rust
 mod deferred_vert {
-    vulkano_shaders::shader!{
+    vulkano_shaders::shader! {
         ty: "vertex",
-        path: "src/shaders/deferred.vert"
+        path: "src/shaders/deferred.vert",
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        },
     }
 }
 
 mod deferred_frag {
-    vulkano_shaders::shader!{
+    vulkano_shaders::shader! {
         ty: "fragment",
         path: "src/shaders/deferred.frag"
     }
 }
 
 mod directional_vert {
-    vulkano_shaders::shader!{
+    vulkano_shaders::shader! {
         ty: "vertex",
-        path: "src/shaders/directional.vert"
+        path: "src/shaders/directional.vert",
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        },
     }
 }
 
 mod directional_frag {
-    vulkano_shaders::shader!{
+    vulkano_shaders::shader! {
         ty: "fragment",
-        path: "src/shaders/directional.frag"
+        path: "src/shaders/directional.frag",
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        },
     }
 }
 
 mod ambient_vert {
-    vulkano_shaders::shader!{
+    vulkano_shaders::shader! {
         ty: "vertex",
-        path: "src/shaders/ambient.vert"
+        path: "src/shaders/ambient.vert",
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        },
     }
 }
 
 mod ambient_frag {
-    vulkano_shaders::shader!{
+    vulkano_shaders::shader! {
         ty: "fragment",
-        path: "src/shaders/ambient.frag"
+        path: "src/shaders/ambient.frag",
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        },
     }
 }
 ```
