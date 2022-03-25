@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "model_loader",
     "lessons/1. Initialization",
     "lessons/2. Triangle",
     "lessons/3. Transformations and Uniforms",

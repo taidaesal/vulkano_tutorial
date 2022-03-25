@@ -3,9 +3,11 @@
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>
 
 #![allow(dead_code)]
-use super::obj_loader::{Loader, NormalVertex};
+use crate::loader::{ColoredVertex, Loader, NormalVertex};
 
-use nalgebra_glm::{identity, rotate_normalized_axis, translate, TMat4, TVec3};
+use nalgebra_glm::{
+    identity, inverse_transpose, rotate_normalized_axis, scale, translate, vec3, TMat4, TVec3,
+};
 
 /// Holds our data for a renderable model, including the model matrix data
 ///
@@ -17,7 +19,11 @@ pub struct Model {
     data: Vec<NormalVertex>,
     translation: TMat4<f32>,
     rotation: TMat4<f32>,
+    uniform_scale: f32,
     model: TMat4<f32>,
+    normals: TMat4<f32>,
+    specular_intensity: f32,
+    shininess: f32,
     // we might call multiple translation/rotation calls
     // in between asking for the model matrix. This lets
     // only recreate the model matrix when needed.
@@ -28,6 +34,9 @@ pub struct ModelBuilder {
     file_name: String,
     custom_color: [f32; 3],
     invert: bool,
+    scale_factor: f32,
+    specular_intensity: f32,
+    shininess: f32,
 }
 
 impl ModelBuilder {
@@ -36,6 +45,9 @@ impl ModelBuilder {
             file_name: file,
             custom_color: [1.0, 0.35, 0.137],
             invert: true,
+            scale_factor: 1.0,
+            specular_intensity: 0.5,
+            shininess: 32.0,
         }
     }
 
@@ -45,7 +57,11 @@ impl ModelBuilder {
             data: loader.as_normal_vertices(),
             translation: identity(),
             rotation: identity(),
+            uniform_scale: self.scale_factor,
             model: identity(),
+            normals: identity(),
+            specular_intensity: self.specular_intensity,
+            shininess: self.shininess,
             requires_update: false,
         }
     }
@@ -64,6 +80,17 @@ impl ModelBuilder {
         self.invert = invert;
         self
     }
+
+    pub fn specular(mut self, specular_intensity: f32, shininess: f32) -> ModelBuilder {
+        self.specular_intensity = specular_intensity;
+        self.shininess = shininess;
+        self
+    }
+
+    pub fn uniform_scale_factor(mut self, scale: f32) -> ModelBuilder {
+        self.scale_factor = scale;
+        self
+    }
 }
 
 impl Model {
@@ -71,21 +98,41 @@ impl Model {
         ModelBuilder::new(file_name.into())
     }
 
+    pub fn color_data(&self) -> Vec<ColoredVertex> {
+        let mut ret: Vec<ColoredVertex> = Vec::new();
+        for v in &self.data {
+            ret.push(ColoredVertex {
+                position: v.position,
+                color: v.color,
+            });
+        }
+        ret
+    }
+
     pub fn data(&self) -> Vec<NormalVertex> {
         self.data.clone()
     }
 
-    pub fn model_matrix(&mut self) -> TMat4<f32> {
+    pub fn model_matrices(&mut self) -> (TMat4<f32>, TMat4<f32>) {
         if self.requires_update {
             self.model = self.translation * self.rotation;
+            self.model = scale(
+                &self.model,
+                &vec3(self.uniform_scale, self.uniform_scale, self.uniform_scale),
+            );
+            self.normals = inverse_transpose(self.model);
             self.requires_update = false;
         }
-        self.model
+        (self.model, self.normals)
     }
 
     pub fn rotate(&mut self, radians: f32, v: TVec3<f32>) {
         self.rotation = rotate_normalized_axis(&self.rotation, radians, &v);
         self.requires_update = true;
+    }
+
+    pub fn specular(&self) -> (f32, f32) {
+        (self.specular_intensity.clone(), self.shininess.clone())
     }
 
     pub fn translate(&mut self, v: TVec3<f32>) {

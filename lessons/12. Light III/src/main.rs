@@ -2,11 +2,9 @@
 // Licensed under the MIT license
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>
 
-mod model;
-mod obj_loader;
 mod system;
 
-use model::Model;
+use model_loader::Model;
 use system::DirectionalLight;
 use system::System;
 

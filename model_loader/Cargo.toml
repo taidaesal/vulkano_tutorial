@@ -1,0 +1,10 @@
+[package]
+name = "model_loader"
+version = "0.29.0"
+authors = ["taidaesal"]
+edition = "2021"
+
+[dependencies]
+vulkano = "0.29.0"
+bytemuck = { version = "1.7", features = ["derive", "extern_crate_std", "min_const_generics"] }
+nalgebra-glm = "0.16.0"

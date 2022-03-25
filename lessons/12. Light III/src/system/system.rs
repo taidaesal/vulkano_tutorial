@@ -6,8 +6,8 @@
 // from code provided by the Vulkano project under
 // the MIT license
 
-use crate::model::Model;
-use crate::obj_loader::{ColoredVertex, DummyVertex, NormalVertex};
+use model_loader::Model;
+use model_loader::{ColoredVertex, DummyVertex, NormalVertex};
 use crate::system::DirectionalLight;
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
@@ -52,10 +52,6 @@ use nalgebra_glm::{identity, inverse, perspective, vec3, TMat4, TVec3};
 
 use std::mem;
 use std::sync::Arc;
-
-vulkano::impl_vertex!(DummyVertex, position);
-vulkano::impl_vertex!(NormalVertex, position, normal, color);
-vulkano::impl_vertex!(ColoredVertex, position, color);
 
 mod deferred_vert {
     vulkano_shaders::shader! {

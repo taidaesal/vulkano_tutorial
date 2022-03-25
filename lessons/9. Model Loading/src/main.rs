@@ -6,9 +6,6 @@
 // from code provided by the Vulkano project under
 // the MIT license
 
-mod model;
-mod obj_loader;
-
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
@@ -44,14 +41,11 @@ use winit::window::{Window, WindowBuilder};
 
 use nalgebra_glm::{identity, look_at, perspective, pi, vec3, TMat4};
 
-use model::Model;
-use obj_loader::{DummyVertex, NormalVertex};
+use model_loader::Model;
+use model_loader::{DummyVertex, NormalVertex};
 
 use std::sync::Arc;
 use std::time::Instant;
-
-vulkano::impl_vertex!(NormalVertex, position, normal, color);
-vulkano::impl_vertex!(DummyVertex, position);
 
 #[derive(Default, Debug, Clone)]
 struct AmbientLight {
@@ -465,7 +459,7 @@ fn main() {
                 model.rotate(elapsed_as_radians as f32 * 20.0, vec3(1.0, 0.0, 0.0));
 
                 let uniform_data = deferred_vert::ty::MVP_Data {
-                    model: model.model_matrix().into(),
+                    model: model.model_matrices().0.into(),
                     view: mvp.view.into(),
                     projection: mvp.projection.into(),
                 };

@@ -6,9 +6,6 @@
 // from code provided by the Vulkano project under
 // the MIT license
 
-mod model;
-mod obj_loader;
-
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
@@ -44,14 +41,11 @@ use winit::window::{Window, WindowBuilder};
 
 use nalgebra_glm::{identity, look_at, perspective, pi, vec3, TMat4};
 
-use model::Model;
-use obj_loader::{DummyVertex, NormalVertex};
+use model_loader::Model;
+use model_loader::{DummyVertex, NormalVertex};
 
 use std::sync::Arc;
 use std::time::Instant;
-
-vulkano::impl_vertex!(NormalVertex, position, normal, color);
-vulkano::impl_vertex!(DummyVertex, position);
 
 #[derive(Default, Debug, Clone)]
 struct AmbientLight {
