@@ -6,8 +6,10 @@
 // from code provided by the Vulkano project under
 // the MIT license
 
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+};
+use vulkano::device::physical::PhysicalDeviceType;
 use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, SwapchainImage};
@@ -15,10 +17,10 @@ use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass};
 use vulkano::swapchain::{
-    self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+    self, AcquireError, PresentInfo, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
 };
 use vulkano::sync::{self, FlushError, GpuFuture};
-use vulkano::Version;
+use vulkano::{Version, VulkanLibrary};
 
 use vulkano_win::VkSurfaceBuild;
 
@@ -30,12 +32,18 @@ use std::sync::Arc;
 
 fn main() {
     let instance = {
-        let extensions = vulkano_win::required_extensions();
-        Instance::new(InstanceCreateInfo {
-            enabled_extensions: extensions,
-            max_api_version: Some(Version::V1_1),
-            ..Default::default()
-        })
+        let library = VulkanLibrary::new().unwrap();
+        let extensions = vulkano_win::required_extensions(&library);
+
+        Instance::new(
+            library,
+            InstanceCreateInfo {
+                enabled_extensions: extensions,
+                enumerate_portability: true, // required for MoltenVK on macOS
+                max_api_version: Some(Version::V1_1),
+                ..Default::default()
+            },
+        )
         .unwrap()
     };
 
@@ -44,26 +52,37 @@ fn main() {
         .build_vk_surface(&event_loop, instance.clone())
         .unwrap();
 
-    let device_ext = DeviceExtensions {
+    let device_extensions = DeviceExtensions {
         khr_swapchain: true,
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
 
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_ext))
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| p.supported_extensions().contains(&device_extensions))
         .filter_map(|p| {
-            p.queue_families()
-                .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
-                .map(|q| (p, q))
+            p.queue_family_properties()
+                .iter()
+                .enumerate()
+                .position(|(i, q)| {
+                    // pick first queue_familiy_index that handles graphics and can draw on the surface created by winit
+                    q.queue_flags.graphics && p.surface_support(i as u32, &surface).unwrap_or(false)
+                })
+                .map(|i| (p, i as u32))
         })
-        .min_by_key(|(p, _)| match p.properties().device_type {
-            PhysicalDeviceType::DiscreteGpu => 0,
-            PhysicalDeviceType::IntegratedGpu => 1,
-            PhysicalDeviceType::VirtualGpu => 2,
-            PhysicalDeviceType::Cpu => 3,
-            PhysicalDeviceType::Other => 4,
+        .min_by_key(|(p, _)| {
+            // lower score for preferred device types
+            match p.properties().device_type {
+                PhysicalDeviceType::DiscreteGpu => 0,
+                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 3,
+                PhysicalDeviceType::Other => 4,
+                _ => 5,
+            }
         })
-        .unwrap();
+        .expect("No suitable physical device found");
 
     println!(
         "Using device: {} (type: {:?})",
@@ -78,9 +97,11 @@ fn main() {
     let (device, mut queues) = Device::new(
         physical_device,
         DeviceCreateInfo {
-            enabled_extensions: physical_device.required_extensions().union(&device_ext),
-
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            enabled_extensions: device_extensions,
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
             ..Default::default()
         },
     )
@@ -89,13 +110,17 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let (mut swapchain, images) = {
-        let caps = physical_device
+        let caps = device
+            .physical_device()
             .surface_capabilities(&surface, Default::default())
             .unwrap();
+
         let usage = caps.supported_usage_flags;
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
+
         let image_format = Some(
-            physical_device
+            device
+                .physical_device()
                 .surface_formats(&surface, Default::default())
                 .unwrap()[0]
                 .0,
@@ -199,23 +224,27 @@ fn main() {
                 recreate_swapchain = true;
             }
 
-            let clear_values = vec![[0.0, 0.68, 1.0, 1.0].into()];
+            let clear_values = vec![Some([0.0, 0.68, 1.0, 1.0].into())];
 
             let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary(
                 device.clone(),
-                queue.family(),
+                queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
             )
             .unwrap();
+
             cmd_buffer_builder
                 .begin_render_pass(
-                    framebuffers[image_num].clone(),
+                    RenderPassBeginInfo {
+                        clear_values,
+                        ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                    },
                     SubpassContents::Inline,
-                    clear_values,
                 )
                 .unwrap()
                 .end_render_pass()
                 .unwrap();
+
             let command_buffer = cmd_buffer_builder.build().unwrap();
 
             let future = previous_frame_end
@@ -224,7 +253,13 @@ fn main() {
                 .join(acquire_future)
                 .then_execute(queue.clone(), command_buffer)
                 .unwrap()
-                .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                .then_swapchain_present(
+                    queue.clone(),
+                    PresentInfo {
+                        index: image_num,
+                        ..PresentInfo::swapchain(swapchain.clone())
+                    },
+                )
                 .then_signal_fence_and_flush();
 
             match future {

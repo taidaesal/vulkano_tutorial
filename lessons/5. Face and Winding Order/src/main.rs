@@ -7,10 +7,13 @@
 // the MIT license
 
 use bytemuck::{Pod, Zeroable};
+
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
+use vulkano::device::physical::PhysicalDeviceType;
 use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
 use vulkano::format::Format;
 use vulkano::image::view::ImageView;
@@ -21,14 +24,13 @@ use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::rasterization::{CullMode, RasterizationState};
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::Pipeline;
-use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
 use vulkano::swapchain::{
-    self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+    self, AcquireError, PresentInfo, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
 };
 use vulkano::sync::{self, FlushError, GpuFuture};
-use vulkano::Version;
+use vulkano::{Version, VulkanLibrary};
 
 use vulkano_win::VkSurfaceBuild;
 
@@ -74,12 +76,18 @@ fn main() {
     );
 
     let instance = {
-        let extensions = vulkano_win::required_extensions();
-        Instance::new(InstanceCreateInfo {
-            enabled_extensions: extensions,
-            max_api_version: Some(Version::V1_1),
-            ..Default::default()
-        })
+        let library = VulkanLibrary::new().unwrap();
+        let extensions = vulkano_win::required_extensions(&library);
+
+        Instance::new(
+            library,
+            InstanceCreateInfo {
+                enabled_extensions: extensions,
+                enumerate_portability: true, // required for MoltenVK on macOS
+                max_api_version: Some(Version::V1_1),
+                ..Default::default()
+            },
+        )
         .unwrap()
     };
 
@@ -88,33 +96,46 @@ fn main() {
         .build_vk_surface(&event_loop, instance.clone())
         .unwrap();
 
-    let device_ext = DeviceExtensions {
+    let device_extensions = DeviceExtensions {
         khr_swapchain: true,
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
 
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_ext))
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| p.supported_extensions().contains(&device_extensions))
         .filter_map(|p| {
-            p.queue_families()
-                .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
-                .map(|q| (p, q))
+            p.queue_family_properties()
+                .iter()
+                .enumerate()
+                .position(|(i, q)| {
+                    // pick first queue_familiy_index that handles graphics and can draw on the surface created by winit
+                    q.queue_flags.graphics && p.surface_support(i as u32, &surface).unwrap_or(false)
+                })
+                .map(|i| (p, i as u32))
         })
-        .min_by_key(|(p, _)| match p.properties().device_type {
-            PhysicalDeviceType::DiscreteGpu => 0,
-            PhysicalDeviceType::IntegratedGpu => 1,
-            PhysicalDeviceType::VirtualGpu => 2,
-            PhysicalDeviceType::Cpu => 3,
-            PhysicalDeviceType::Other => 4,
+        .min_by_key(|(p, _)| {
+            // lower score for preferred device types
+            match p.properties().device_type {
+                PhysicalDeviceType::DiscreteGpu => 0,
+                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 3,
+                PhysicalDeviceType::Other => 4,
+                _ => 5,
+            }
         })
-        .unwrap();
+        .expect("No suitable physical device found");
 
     let (device, mut queues) = Device::new(
         physical_device,
         DeviceCreateInfo {
-            enabled_extensions: physical_device.required_extensions().union(&device_ext),
-
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            enabled_extensions: device_extensions,
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
             ..Default::default()
         },
     )
@@ -123,19 +144,25 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let (mut swapchain, images) = {
-        let dim: [u32; 2] = surface.window().inner_size().into();
-        let caps = physical_device
+        let caps = device
+            .physical_device()
             .surface_capabilities(&surface, Default::default())
             .unwrap();
+
         let usage = caps.supported_usage_flags;
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
+
         let image_format = Some(
-            physical_device
+            device
+                .physical_device()
                 .surface_formats(&surface, Default::default())
                 .unwrap()[0]
                 .0,
         );
-        mvp.projection = perspective(dim[0] as f32 / dim[1] as f32, 180.0, 0.01, 100.0);
+
+        let dim: [u32; 2] = surface.window().inner_size().into();
+        let aspect_ratio = dim[0] as f32 / dim[1] as f32;
+        mvp.projection = perspective(aspect_ratio, 180.0, 0.01, 100.0);
 
         Swapchain::new(
             device.clone(),
@@ -143,7 +170,7 @@ fn main() {
             SwapchainCreateInfo {
                 min_image_count: caps.min_image_count,
                 image_format,
-                image_extent: surface.window().inner_size().into(),
+                image_extent: dim,
                 image_usage: usage,
                 composite_alpha: alpha,
                 ..Default::default()
@@ -154,25 +181,26 @@ fn main() {
 
     mod vs {
         vulkano_shaders::shader! {
-        ty: "vertex",
-        src: "
-#version 450
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec3 color;
+            ty: "vertex",
+            src: "
+                #version 450
+                layout(location = 0) in vec3 position;
+                layout(location = 1) in vec3 color;
 
-layout(location = 0) out vec3 out_color;
+                layout(location = 0) out vec3 out_color;
 
-layout(set = 0, binding = 0) uniform MVP_Data {
-    mat4 model;
-    mat4 view;
-    mat4 projection;
-} uniforms;
+                layout(set = 0, binding = 0) uniform MVP_Data {
+                    mat4 model;
+                    mat4 view;
+                    mat4 projection;
+                } uniforms;
 
-void main() {
-    mat4 worldview = uniforms.view * uniforms.model;
-    gl_Position = uniforms.projection * worldview * vec4(position, 1.0);
-    out_color = color;
-}",
+                void main() {
+                    mat4 worldview = uniforms.view * uniforms.model;
+                    gl_Position = uniforms.projection * worldview * vec4(position, 1.0);
+                    out_color = color;
+                }
+            ",
             types_meta: {
                 use bytemuck::{Pod, Zeroable};
 
@@ -183,24 +211,25 @@ void main() {
 
     mod fs {
         vulkano_shaders::shader! {
-        ty: "fragment",
-        src: "
-#version 450
-layout(location = 0) in vec3 in_color;
+            ty: "fragment",
+            src: "
+                #version 450
+                layout(location = 0) in vec3 in_color;
 
-layout(location = 0) out vec4 f_color;
+                layout(location = 0) out vec4 f_color;
 
-void main() {
-    f_color = vec4(in_color, 1.0);
-}
-"
+                void main() {
+                    f_color = vec4(in_color, 1.0);
+                }
+            "
         }
     }
 
     let vs = vs::load(device.clone()).unwrap();
     let fs = fs::load(device.clone()).unwrap();
 
-    let uniform_buffer = CpuBufferPool::<vs::ty::MVP_Data>::uniform_buffer(device.clone());
+    let uniform_buffer: CpuBufferPool<vs::ty::MVP_Data> =
+        CpuBufferPool::uniform_buffer(device.clone());
 
     let render_pass = vulkano::single_pass_renderpass!(device.clone(),
         attachments: {
@@ -236,38 +265,41 @@ void main() {
         .build(device.clone())
         .unwrap();
 
+    let vertices = [
+        Vertex {
+            position: [-0.5, 0.5, -0.5],
+            color: [0.0, 0.0, 0.0],
+        },
+        Vertex {
+            position: [0.5, 0.5, -0.5],
+            color: [0.0, 0.0, 0.0],
+        },
+        Vertex {
+            position: [0.0, -0.5, -0.5],
+            color: [0.0, 0.0, 0.0],
+        },
+        Vertex {
+            position: [-0.5, -0.5, -0.6],
+            color: [1.0, 1.0, 1.0],
+        },
+        Vertex {
+            position: [0.5, -0.5, -0.6],
+            color: [1.0, 1.0, 1.0],
+        },
+        Vertex {
+            position: [0.0, 0.5, -0.6],
+            color: [1.0, 1.0, 1.0],
+        },
+    ];
+
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
         device.clone(),
-        BufferUsage::all(),
+        BufferUsage {
+            vertex_buffer: true,
+            ..BufferUsage::empty()
+        },
         false,
-        [
-            Vertex {
-                position: [-0.5, 0.5, -0.5],
-                color: [0.0, 0.0, 0.0],
-            },
-            Vertex {
-                position: [0.5, 0.5, -0.5],
-                color: [0.0, 0.0, 0.0],
-            },
-            Vertex {
-                position: [0.0, -0.5, -0.5],
-                color: [0.0, 0.0, 0.0],
-            },
-            Vertex {
-                position: [-0.5, -0.5, -0.6],
-                color: [1.0, 1.0, 1.0],
-            },
-            Vertex {
-                position: [0.5, -0.5, -0.6],
-                color: [1.0, 1.0, 1.0],
-            },
-            Vertex {
-                position: [0.0, 0.5, -0.6],
-                color: [1.0, 1.0, 1.0],
-            },
-        ]
-        .iter()
-        .cloned(),
+        vertices,
     )
     .unwrap();
 
@@ -305,21 +337,18 @@ void main() {
                 .cleanup_finished();
 
             if recreate_swapchain {
-                let dimensions: [u32; 2] = surface.window().inner_size().into();
+                let dim: [u32; 2] = surface.window().inner_size().into();
+                let aspect_ratio = dim[0] as f32 / dim[1] as f32;
+                mvp.projection = perspective(aspect_ratio, 180.0, 0.01, 100.0);
+
                 let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
-                    image_extent: surface.window().inner_size().into(),
+                    image_extent: dim,
                     ..swapchain.create_info()
                 }) {
                     Ok(r) => r,
                     Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
                     Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
                 };
-                mvp.projection = perspective(
-                    dimensions[0] as f32 / dimensions[1] as f32,
-                    180.0,
-                    0.01,
-                    100.0,
-                );
 
                 swapchain = new_swapchain;
                 framebuffers = window_size_dependent_setup(
@@ -345,7 +374,7 @@ void main() {
                 recreate_swapchain = true;
             }
 
-            let clear_values = vec![[0.0, 0.68, 1.0, 1.0].into(), 1f32.into()];
+            let clear_values = vec![Some([0.0, 0.68, 1.0, 1.0].into()), Some(1.0.into())];
 
             let uniform_buffer_subbuffer = {
                 let uniform_data = vs::ty::MVP_Data {
@@ -354,7 +383,7 @@ void main() {
                     projection: mvp.projection.into(),
                 };
 
-                uniform_buffer.next(uniform_data).unwrap()
+                uniform_buffer.from_data(uniform_data).unwrap()
             };
 
             let layout = pipeline.layout().set_layouts().get(0).unwrap();
@@ -366,15 +395,18 @@ void main() {
 
             let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary(
                 device.clone(),
-                queue.family(),
+                queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
             )
             .unwrap();
+
             cmd_buffer_builder
                 .begin_render_pass(
-                    framebuffers[image_num].clone(),
+                    RenderPassBeginInfo {
+                        clear_values,
+                        ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                    },
                     SubpassContents::Inline,
-                    clear_values,
                 )
                 .unwrap()
                 .set_viewport(0, [viewport.clone()])
@@ -390,6 +422,7 @@ void main() {
                 .unwrap()
                 .end_render_pass()
                 .unwrap();
+
             let command_buffer = cmd_buffer_builder.build().unwrap();
 
             let future = previous_frame_end
@@ -398,7 +431,13 @@ void main() {
                 .join(acquire_future)
                 .then_execute(queue.clone(), command_buffer)
                 .unwrap()
-                .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                .then_swapchain_present(
+                    queue.clone(),
+                    PresentInfo {
+                        index: image_num,
+                        ..PresentInfo::swapchain(swapchain.clone())
+                    },
+                )
                 .then_signal_fence_and_flush();
 
             match future {
