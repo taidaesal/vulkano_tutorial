@@ -9,9 +9,11 @@
 use bytemuck::{Pod, Zeroable};
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
+use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
 };
+use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::PhysicalDeviceType;
 use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
@@ -19,6 +21,7 @@ use vulkano::format::Format;
 use vulkano::image::view::ImageView;
 use vulkano::image::{AttachmentImage, ImageAccess, SwapchainImage};
 use vulkano::instance::{Instance, InstanceCreateInfo};
+use vulkano::memory::allocator::StandardMemoryAllocator;
 use vulkano::pipeline::graphics::depth_stencil::DepthStencilState;
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
@@ -26,7 +29,8 @@ use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
 use vulkano::swapchain::{
-    self, AcquireError, PresentInfo, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+    self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+    SwapchainPresentInfo,
 };
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::{Version, VulkanLibrary};
@@ -159,8 +163,10 @@ fn main() {
                 .0,
         );
 
-        let dim: [u32; 2] = surface.window().inner_size().into();
-        let aspect_ratio = dim[0] as f32 / dim[1] as f32;
+        let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+        let image_extent: [u32; 2] = window.inner_size().into();
+
+        let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
         mvp.projection = perspective(aspect_ratio, 180.0, 0.01, 100.0);
 
         Swapchain::new(
@@ -169,7 +175,7 @@ fn main() {
             SwapchainCreateInfo {
                 min_image_count: caps.min_image_count,
                 image_format,
-                image_extent: dim,
+                image_extent,
                 image_usage: usage,
                 composite_alpha: alpha,
                 ..Default::default()
@@ -177,6 +183,11 @@ fn main() {
         )
         .unwrap()
     };
+
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
     mod vs {
         vulkano_shaders::shader! {
@@ -228,7 +239,7 @@ fn main() {
     let fs = fs::load(device.clone()).unwrap();
 
     let uniform_buffer: CpuBufferPool<vs::ty::MVP_Data> =
-        CpuBufferPool::uniform_buffer(device.clone());
+        CpuBufferPool::uniform_buffer(memory_allocator.clone());
 
     let render_pass = vulkano::single_pass_renderpass!(device.clone(),
         attachments: {
@@ -291,7 +302,7 @@ fn main() {
     ];
 
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
+        &memory_allocator,
         BufferUsage {
             vertex_buffer: true,
             ..BufferUsage::empty()
@@ -307,8 +318,12 @@ fn main() {
         depth_range: 0.0..1.0,
     };
 
-    let mut framebuffers =
-        window_size_dependent_setup(device.clone(), &images, render_pass.clone(), &mut viewport);
+    let mut framebuffers = window_size_dependent_setup(
+        &memory_allocator,
+        &images,
+        render_pass.clone(),
+        &mut viewport,
+    );
 
     let mut recreate_swapchain = false;
 
@@ -335,12 +350,14 @@ fn main() {
                 .cleanup_finished();
 
             if recreate_swapchain {
-                let dim: [u32; 2] = surface.window().inner_size().into();
-                let aspect_ratio = dim[0] as f32 / dim[1] as f32;
+                let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+                let image_extent: [u32; 2] = window.inner_size().into();
+
+                let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
                 mvp.projection = perspective(aspect_ratio, 180.0, 0.01, 100.0);
 
                 let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
-                    image_extent: dim,
+                    image_extent,
                     ..swapchain.create_info()
                 }) {
                     Ok(r) => r,
@@ -350,7 +367,7 @@ fn main() {
 
                 swapchain = new_swapchain;
                 framebuffers = window_size_dependent_setup(
-                    device.clone(),
+                    &memory_allocator,
                     &new_images,
                     render_pass.clone(),
                     &mut viewport,
@@ -358,7 +375,7 @@ fn main() {
                 recreate_swapchain = false;
             }
 
-            let (image_num, suboptimal, acquire_future) =
+            let (image_index, suboptimal, acquire_future) =
                 match swapchain::acquire_next_image(swapchain.clone(), None) {
                     Ok(r) => r,
                     Err(AcquireError::OutOfDate) => {
@@ -386,13 +403,14 @@ fn main() {
 
             let layout = pipeline.layout().set_layouts().get(0).unwrap();
             let set = PersistentDescriptorSet::new(
+                &descriptor_set_allocator,
                 layout.clone(),
                 [WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer)],
             )
             .unwrap();
 
             let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary(
-                device.clone(),
+                &command_buffer_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
             )
@@ -402,7 +420,9 @@ fn main() {
                 .begin_render_pass(
                     RenderPassBeginInfo {
                         clear_values,
-                        ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                        ..RenderPassBeginInfo::framebuffer(
+                            framebuffers[image_index as usize].clone(),
+                        )
                     },
                     SubpassContents::Inline,
                 )
@@ -431,10 +451,7 @@ fn main() {
                 .unwrap()
                 .then_swapchain_present(
                     queue.clone(),
-                    PresentInfo {
-                        index: image_num,
-                        ..PresentInfo::swapchain(swapchain.clone())
-                    },
+                    SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
                 )
                 .then_signal_fence_and_flush();
 
@@ -459,15 +476,15 @@ fn main() {
 /// This method is called once during initialization, then again whenever the window is resized
 /// stolen from the vulkano example
 fn window_size_dependent_setup(
-    device: Arc<Device>,
-    images: &[Arc<SwapchainImage<Window>>],
+    allocator: &StandardMemoryAllocator,
+    images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {
     let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
     let depth_buffer = ImageView::new_default(
-        AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
+        AttachmentImage::transient(allocator, dimensions, Format::D16_UNORM).unwrap(),
     )
     .unwrap();
 

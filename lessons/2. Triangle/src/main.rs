@@ -9,6 +9,7 @@
 use bytemuck::{Pod, Zeroable};
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
+use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
 };
@@ -17,13 +18,15 @@ use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInf
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, SwapchainImage};
 use vulkano::instance::{Instance, InstanceCreateInfo};
+use vulkano::memory::allocator::StandardMemoryAllocator;
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
 use vulkano::swapchain::{
-    self, AcquireError, PresentInfo, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+    self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+    SwapchainPresentInfo,
 };
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::{Version, VulkanLibrary};
@@ -140,13 +143,16 @@ fn main() {
                 .0,
         );
 
+        let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+        let image_extent: [u32; 2] = window.inner_size().into();
+
         Swapchain::new(
             device.clone(),
             surface.clone(),
             SwapchainCreateInfo {
                 min_image_count: caps.min_image_count,
                 image_format,
-                image_extent: surface.window().inner_size().into(),
+                image_extent,
                 image_usage: usage,
                 composite_alpha: alpha,
                 ..Default::default()
@@ -154,6 +160,10 @@ fn main() {
         )
         .unwrap()
     };
+
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
     mod vs {
         vulkano_shaders::shader! {
@@ -235,7 +245,7 @@ fn main() {
     ];
 
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
+        &memory_allocator,
         BufferUsage {
             vertex_buffer: true,
             ..BufferUsage::empty()
@@ -278,8 +288,11 @@ fn main() {
                 .cleanup_finished();
 
             if recreate_swapchain {
+                let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+                let image_extent: [u32; 2] = window.inner_size().into();
+
                 let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
-                    image_extent: surface.window().inner_size().into(),
+                    image_extent,
                     ..swapchain.create_info()
                 }) {
                     Ok(r) => r,
@@ -293,7 +306,7 @@ fn main() {
                 recreate_swapchain = false;
             }
 
-            let (image_num, suboptimal, acquire_future) =
+            let (image_index, suboptimal, acquire_future) =
                 match swapchain::acquire_next_image(swapchain.clone(), None) {
                     Ok(r) => r,
                     Err(AcquireError::OutOfDate) => {
@@ -310,7 +323,7 @@ fn main() {
             let clear_values = vec![Some([0.0, 0.68, 1.0, 1.0].into())];
 
             let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary(
-                device.clone(),
+                &command_buffer_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
             )
@@ -320,7 +333,9 @@ fn main() {
                 .begin_render_pass(
                     RenderPassBeginInfo {
                         clear_values,
-                        ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                        ..RenderPassBeginInfo::framebuffer(
+                            framebuffers[image_index as usize].clone(),
+                        )
                     },
                     SubpassContents::Inline,
                 )
@@ -343,10 +358,7 @@ fn main() {
                 .unwrap()
                 .then_swapchain_present(
                     queue.clone(),
-                    PresentInfo {
-                        index: image_num,
-                        ..PresentInfo::swapchain(swapchain.clone())
-                    },
+                    SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
                 )
                 .then_signal_fence_and_flush();
 
@@ -371,7 +383,7 @@ fn main() {
 /// This method is called once during initialization, then again whenever the window is resized
 /// stolen from the vulkano example
 fn window_size_dependent_setup(
-    images: &[Arc<SwapchainImage<Window>>],
+    images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {
