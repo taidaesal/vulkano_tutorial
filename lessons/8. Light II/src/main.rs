@@ -796,7 +796,6 @@ fn main() {
                 .next_subpass(SubpassContents::Inline)
                 .unwrap();
 
-
             let directional_layout = directional_pipeline.layout().set_layouts().get(0).unwrap();
 
             // directional_light_r
