@@ -11,7 +11,7 @@ members = [
     "lessons/9. Model Loading",
     "lessons/10. Uniform Refactoring",
     "lessons/11. First Rendering System",
-    # "lessons/11.5. Light Objects",
+    "lessons/11.5. Light Objects",
     # "lessons/12. Light III",
     # "lessons/13. Textures",
     # "lessons/14. Text",
