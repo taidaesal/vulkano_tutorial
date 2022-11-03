@@ -238,9 +238,6 @@ fn main() {
     let vs = vs::load(device.clone()).unwrap();
     let fs = fs::load(device.clone()).unwrap();
 
-    let uniform_buffer: CpuBufferPool<vs::ty::MVP_Data> =
-        CpuBufferPool::uniform_buffer(memory_allocator.clone());
-
     let render_pass = vulkano::single_pass_renderpass!(device.clone(),
         attachments: {
             color: {
@@ -273,6 +270,9 @@ fn main() {
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap();
+
+    let uniform_buffer: CpuBufferPool<vs::ty::MVP_Data> =
+        CpuBufferPool::uniform_buffer(memory_allocator.clone());
 
     let vertices = [
         Vertex {

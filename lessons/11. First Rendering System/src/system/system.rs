@@ -14,7 +14,8 @@ use vulkano::buffer::cpu_pool::CpuBufferPoolSubbuffer;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, RenderPassBeginInfo, SubpassContents,
+    AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, RenderPassBeginInfo,
+    SubpassContents,
 };
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
@@ -130,14 +131,14 @@ pub struct System {
     memory_allocator: Arc<StandardMemoryAllocator>,
     descriptor_set_allocator: StandardDescriptorSetAllocator,
     command_buffer_allocator: StandardCommandBufferAllocator,
-    vp_buffer: Arc<CpuAccessibleBuffer<deferred_vert::ty::VP_Data>>,
-    model_uniform_buffer: CpuBufferPool<deferred_vert::ty::Model_Data>,
-    ambient_buffer: Arc<CpuAccessibleBuffer<ambient_frag::ty::Ambient_Data>>,
-    directional_buffer: CpuBufferPool<directional_frag::ty::Directional_Light_Data>,
     render_pass: Arc<RenderPass>,
     deferred_pipeline: Arc<GraphicsPipeline>,
     directional_pipeline: Arc<GraphicsPipeline>,
     ambient_pipeline: Arc<GraphicsPipeline>,
+    vp_buffer: Arc<CpuAccessibleBuffer<deferred_vert::ty::VP_Data>>,
+    model_uniform_buffer: CpuBufferPool<deferred_vert::ty::Model_Data>,
+    ambient_buffer: Arc<CpuAccessibleBuffer<ambient_frag::ty::Ambient_Data>>,
+    directional_buffer: CpuBufferPool<directional_frag::ty::Directional_Light_Data>,
     dummy_verts: Arc<CpuAccessibleBuffer<[DummyVertex]>>,
     framebuffers: Vec<Arc<Framebuffer>>,
     color_buffer: Arc<ImageView<AttachmentImage>>,
@@ -202,7 +203,8 @@ impl System {
                     .enumerate()
                     .position(|(i, q)| {
                         // pick first queue_familiy_index that handles graphics and can draw on the surface created by winit
-                        q.queue_flags.graphics && p.surface_support(i as u32, &surface).unwrap_or(false)
+                        q.queue_flags.graphics
+                            && p.surface_support(i as u32, &surface).unwrap_or(false)
                     })
                     .map(|i| (p, i as u32))
             })
@@ -468,14 +470,14 @@ impl System {
             memory_allocator,
             descriptor_set_allocator,
             command_buffer_allocator,
-            vp_buffer,
-            model_uniform_buffer,
-            ambient_buffer,
-            directional_buffer,
             render_pass,
             deferred_pipeline,
             directional_pipeline,
             ambient_pipeline,
+            vp_buffer,
+            model_uniform_buffer,
+            ambient_buffer,
+            directional_buffer,
             dummy_verts,
             framebuffers,
             color_buffer,
@@ -561,7 +563,12 @@ impl System {
         let directional_uniform_subbuffer =
             self.generate_directional_buffer(&self.directional_buffer, &directional_light);
 
-        let directional_layout = self.directional_pipeline.layout().set_layouts().get(0).unwrap();
+        let directional_layout = self
+            .directional_pipeline
+            .layout()
+            .set_layouts()
+            .get(0)
+            .unwrap();
         let directional_set = PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,
             directional_layout.clone(),
@@ -625,7 +632,10 @@ impl System {
             .unwrap()
             .then_swapchain_present(
                 self.queue.clone(),
-                SwapchainPresentInfo::swapchain_image_index(self.swapchain.clone(), self.image_index),
+                SwapchainPresentInfo::swapchain_image_index(
+                    self.swapchain.clone(),
+                    self.image_index,
+                ),
             )
             .then_signal_fence_and_flush();
 
@@ -687,7 +697,12 @@ impl System {
             self.model_uniform_buffer.from_data(uniform_data).unwrap()
         };
 
-        let model_layout = self.deferred_pipeline.layout().set_layouts().get(1).unwrap();
+        let model_layout = self
+            .deferred_pipeline
+            .layout()
+            .set_layouts()
+            .get(1)
+            .unwrap();
         let model_set = PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,
             model_layout.clone(),
@@ -756,7 +771,12 @@ impl System {
         )
         .unwrap();
 
-        let vp_layout = self.deferred_pipeline.layout().set_layouts().get(0).unwrap();
+        let vp_layout = self
+            .deferred_pipeline
+            .layout()
+            .set_layouts()
+            .get(0)
+            .unwrap();
         self.vp_set = PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,
             vp_layout.clone(),
@@ -836,7 +856,12 @@ impl System {
         self.render_stage = RenderStage::NeedsRedraw;
         self.commands = None;
 
-        let window = self.surface.object().unwrap().downcast_ref::<Window>().unwrap();
+        let window = self
+            .surface
+            .object()
+            .unwrap()
+            .downcast_ref::<Window>()
+            .unwrap();
         let image_extent: [u32; 2] = window.inner_size().into();
 
         let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
@@ -878,7 +903,12 @@ impl System {
         )
         .unwrap();
 
-        let vp_layout = self.deferred_pipeline.layout().set_layouts().get(0).unwrap();
+        let vp_layout = self
+            .deferred_pipeline
+            .layout()
+            .set_layouts()
+            .get(0)
+            .unwrap();
         self.vp_set = PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,
             vp_layout.clone(),

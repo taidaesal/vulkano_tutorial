@@ -302,13 +302,6 @@ fn main() {
     let ambient_vert = ambient_vert::load(device.clone()).unwrap();
     let ambient_frag = ambient_frag::load(device.clone()).unwrap();
 
-    let uniform_buffer: CpuBufferPool<deferred_vert::ty::MVP_Data> =
-        CpuBufferPool::uniform_buffer(memory_allocator.clone());
-    let ambient_buffer: CpuBufferPool<ambient_frag::ty::Ambient_Data> =
-        CpuBufferPool::uniform_buffer(memory_allocator.clone());
-    let directional_buffer: CpuBufferPool<directional_frag::ty::Directional_Light_Data> =
-        CpuBufferPool::uniform_buffer(memory_allocator.clone());
-
     let render_pass = vulkano::ordered_passes_renderpass!(device.clone(),
         attachments: {
             final_color: {
@@ -409,6 +402,13 @@ fn main() {
         .render_pass(lighting_pass.clone())
         .build(device.clone())
         .unwrap();
+
+    let uniform_buffer: CpuBufferPool<deferred_vert::ty::MVP_Data> =
+        CpuBufferPool::uniform_buffer(memory_allocator.clone());
+    let ambient_buffer: CpuBufferPool<ambient_frag::ty::Ambient_Data> =
+        CpuBufferPool::uniform_buffer(memory_allocator.clone());
+    let directional_buffer: CpuBufferPool<directional_frag::ty::Directional_Light_Data> =
+        CpuBufferPool::uniform_buffer(memory_allocator.clone());
 
     let vertices = [
         // front face
