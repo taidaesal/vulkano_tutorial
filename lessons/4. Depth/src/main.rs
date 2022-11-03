@@ -391,7 +391,7 @@ fn main() {
 
             let clear_values = vec![Some([0.0, 0.68, 1.0, 1.0].into()), Some(1.0.into())];
 
-            let uniform_buffer_subbuffer = {
+            let uniform_subbuffer = {
                 let uniform_data = vs::ty::MVP_Data {
                     model: mvp.model.into(),
                     view: mvp.view.into(),
@@ -405,7 +405,7 @@ fn main() {
             let set = PersistentDescriptorSet::new(
                 &descriptor_set_allocator,
                 layout.clone(),
-                [WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer)],
+                [WriteDescriptorSet::buffer(0, uniform_subbuffer)],
             )
             .unwrap();
 

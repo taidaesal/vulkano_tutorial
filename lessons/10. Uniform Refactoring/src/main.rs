@@ -545,7 +545,7 @@ fn main() {
                 Some(1.0.into()),
             ];
 
-            let model_uniform_subbuffer = {
+            let model_subbuffer = {
                 let elapsed = rotation_start.elapsed().as_secs() as f64
                     + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
                 let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
@@ -564,7 +564,7 @@ fn main() {
                 model_uniform_buffer.from_data(uniform_data).unwrap()
             };
 
-            let ambient_uniform_subbuffer = {
+            let ambient_subbuffer = {
                 let uniform_data = ambient_frag::ty::Ambient_Data {
                     color: ambient_light.color.into(),
                     intensity: ambient_light.intensity.into(),
@@ -577,10 +577,7 @@ fn main() {
             let model_set = PersistentDescriptorSet::new(
                 &descriptor_set_allocator,
                 model_layout.clone(),
-                [WriteDescriptorSet::buffer(
-                    0,
-                    model_uniform_subbuffer.clone(),
-                )],
+                [WriteDescriptorSet::buffer(0, model_subbuffer.clone())],
             )
             .unwrap();
 
@@ -590,12 +587,12 @@ fn main() {
                 ambient_layout.clone(),
                 [
                     WriteDescriptorSet::image_view(0, color_buffer.clone()),
-                    WriteDescriptorSet::buffer(1, ambient_uniform_subbuffer.clone()),
+                    WriteDescriptorSet::buffer(1, ambient_subbuffer.clone()),
                 ],
             )
             .unwrap();
 
-            let directional_uniform_subbuffer =
+            let directional_subbuffer =
                 generate_directional_buffer(&directional_buffer, &directional_light);
             let directional_layout = directional_pipeline.layout().set_layouts().get(0).unwrap();
             let directional_set = PersistentDescriptorSet::new(
@@ -604,7 +601,7 @@ fn main() {
                 [
                     WriteDescriptorSet::image_view(0, color_buffer.clone()),
                     WriteDescriptorSet::image_view(1, normal_buffer.clone()),
-                    WriteDescriptorSet::buffer(2, directional_uniform_subbuffer.clone()),
+                    WriteDescriptorSet::buffer(2, directional_subbuffer.clone()),
                 ],
             )
             .unwrap();

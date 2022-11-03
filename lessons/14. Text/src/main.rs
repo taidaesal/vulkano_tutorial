@@ -392,7 +392,7 @@ void main() {
 
             let clear_values = vec![[0.0, 0.68, 1.0, 1.0].into(), 1f32.into()];
 
-            let uniform_buffer_subbuffer = {
+            let uniform_subbuffer = {
                 let uniform_data = vs::ty::MVP_Data {
                     model: mvp.model.into(),
                     view: mvp.view.into(),
@@ -406,7 +406,7 @@ void main() {
             let set = PersistentDescriptorSet::new(
                 layout.clone(),
                 [
-                    WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer.clone()),
+                    WriteDescriptorSet::buffer(0, uniform_subbuffer.clone()),
                     WriteDescriptorSet::image_view_sampler(1, texture.clone(), sampler.clone()),
                 ],
             )

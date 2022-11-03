@@ -368,7 +368,7 @@ fn main() {
 
             let clear_values = vec![Some([0.0, 0.68, 1.0, 1.0].into())];
 
-            let uniform_buffer_subbuffer = {
+            let uniform_subbuffer = {
                 let elapsed = rotation_start.elapsed().as_secs() as f64
                     + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
                 let elapsed_as_radians = elapsed * pi::<f64>() / 180.0 * 30.0;
@@ -391,7 +391,7 @@ fn main() {
             let set = PersistentDescriptorSet::new(
                 &descriptor_set_allocator,
                 layout.clone(),
-                [WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer)],
+                [WriteDescriptorSet::buffer(0, uniform_subbuffer)],
             )
             .unwrap();
 

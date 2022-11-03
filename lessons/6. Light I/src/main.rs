@@ -614,7 +614,7 @@ fn main() {
 
             let clear_values = vec![Some([0.0, 0.68, 1.0, 1.0].into()), Some(1.0.into())];
 
-            let uniform_buffer_subbuffer = {
+            let uniform_subbuffer = {
                 let elapsed = rotation_start.elapsed().as_secs() as f64
                     + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
                 let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
@@ -644,7 +644,7 @@ fn main() {
                 uniform_buffer.from_data(uniform_data).unwrap()
             };
 
-            let ambient_uniform_subbuffer = {
+            let ambient_subbuffer = {
                 let uniform_data = fs::ty::Ambient_Data {
                     color: ambient_light.color.into(),
                     intensity: ambient_light.intensity.into(),
@@ -653,7 +653,7 @@ fn main() {
                 ambient_buffer.from_data(uniform_data).unwrap()
             };
 
-            let directional_uniform_subbuffer = {
+            let directional_subbuffer = {
                 let uniform_data = fs::ty::Directional_Light_Data {
                     position: directional_light.position.into(),
                     color: directional_light.color.into(),
@@ -667,9 +667,9 @@ fn main() {
                 &descriptor_set_allocator,
                 layout.clone(),
                 [
-                    WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer),
-                    WriteDescriptorSet::buffer(1, ambient_uniform_subbuffer),
-                    WriteDescriptorSet::buffer(2, directional_uniform_subbuffer),
+                    WriteDescriptorSet::buffer(0, uniform_subbuffer),
+                    WriteDescriptorSet::buffer(1, ambient_subbuffer),
+                    WriteDescriptorSet::buffer(2, directional_subbuffer),
                 ],
             )
             .unwrap();
