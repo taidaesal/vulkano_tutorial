@@ -47,7 +47,7 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
-use nalgebra_glm::{identity, look_at, perspective, pi, vec3, TMat4};
+use nalgebra_glm::{half_pi, identity, look_at, perspective, pi, vec3, TMat4};
 
 use model::Model;
 use obj_loader::{DummyVertex, NormalVertex};
@@ -146,11 +146,11 @@ fn main() {
     let mut model = Model::new("data/models/teapot.obj").build();
     let mut vp = VP::new();
     vp.view = look_at(
-        &vec3(0.0, 0.0, 0.01),
+        &vec3(0.0, 0.0, 0.1),
         &vec3(0.0, 0.0, 0.0),
-        &vec3(0.0, -1.0, 0.0),
+        &vec3(0.0, 1.0, 0.0),
     );
-    model.translate(vec3(0.0, 0.0, -3.5));
+    model.translate(vec3(0.0, 0.0, -5.0));
 
     let ambient_light = AmbientLight {
         color: [1.0, 1.0, 1.0],
@@ -250,7 +250,7 @@ fn main() {
         let image_extent: [u32; 2] = window.inner_size().into();
 
         let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
-        vp.projection = perspective(aspect_ratio, 180.0, 0.01, 100.0);
+        vp.projection = perspective(aspect_ratio, half_pi(), 0.01, 100.0);
 
         Swapchain::new(
             device.clone(),
@@ -475,7 +475,7 @@ fn main() {
                 let image_extent: [u32; 2] = window.inner_size().into();
 
                 let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
-                vp.projection = perspective(aspect_ratio, 180.0, 0.01, 100.0);
+                vp.projection = perspective(aspect_ratio, half_pi(), 0.01, 100.0);
 
                 let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
                     image_extent,

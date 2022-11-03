@@ -43,7 +43,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
 use nalgebra_glm::{
-    identity, look_at, perspective, pi, rotate_normalized_axis, translate, vec3, TMat4,
+    half_pi, identity, look_at, perspective, pi, rotate_normalized_axis, translate, vec3, TMat4,
 };
 
 use std::sync::Arc;
@@ -90,11 +90,11 @@ impl MVP {
 fn main() {
     let mut mvp = MVP::new();
     mvp.view = look_at(
-        &vec3(0.0, 0.0, 0.01),
+        &vec3(0.0, 0.0, 0.1),
         &vec3(0.0, 0.0, 0.0),
-        &vec3(0.0, -1.0, 0.0),
+        &vec3(0.0, 1.0, 0.0),
     );
-    mvp.model = translate(&identity(), &vec3(0.0, 0.0, -2.5));
+    mvp.model = translate(&identity(), &vec3(0.0, 0.0, -5.0));
 
     let ambient_light = AmbientLight {
         color: [1.0, 1.0, 1.0],
@@ -194,7 +194,7 @@ fn main() {
         let image_extent: [u32; 2] = window.inner_size().into();
 
         let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
-        mvp.projection = perspective(aspect_ratio, 180.0, 0.01, 100.0);
+        mvp.projection = perspective(aspect_ratio, half_pi(), 0.01, 100.0);
 
         Swapchain::new(
             device.clone(),
@@ -577,7 +577,7 @@ fn main() {
                 let image_extent: [u32; 2] = window.inner_size().into();
 
                 let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
-                mvp.projection = perspective(aspect_ratio, 180.0, 0.01, 100.0);
+                mvp.projection = perspective(aspect_ratio, half_pi(), 0.01, 100.0);
 
                 let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
                     image_extent,

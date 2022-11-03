@@ -25,19 +25,19 @@ fn main() {
     let mut system = System::new(&event_loop);
 
     system.set_view(&look_at(
-        &vec3(0.0, 0.0, 0.01),
+        &vec3(0.0, 0.0, 0.1),
         &vec3(0.0, 0.0, 0.0),
-        &vec3(0.0, -1.0, 0.0),
+        &vec3(0.0, 1.0, 0.0),
     ));
 
     let mut previous_frame_end =
         Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
 
     let mut teapot = Model::new("data/models/teapot.obj").build();
-    teapot.translate(vec3(-5.0, 2.0, -5.0));
+    teapot.translate(vec3(-5.0, 2.0, -8.0));
 
     let mut suzanne = Model::new("data/models/suzanne.obj").build();
-    suzanne.translate(vec3(5.0, 2.0, -5.0));
+    suzanne.translate(vec3(5.0, 2.0, -6.0));
 
     let mut torus = Model::new("data/models/torus.obj").build();
     torus.translate(vec3(0.0, -2.0, -5.0));

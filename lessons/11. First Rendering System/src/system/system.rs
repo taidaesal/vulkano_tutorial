@@ -48,7 +48,7 @@ use vulkano_win::VkSurfaceBuild;
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
 
-use nalgebra_glm::{identity, perspective, TMat4};
+use nalgebra_glm::{half_pi, identity, perspective, TMat4};
 
 use std::mem;
 use std::sync::Arc;
@@ -259,7 +259,7 @@ impl System {
             let image_extent: [u32; 2] = window.inner_size().into();
 
             let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
-            vp.projection = perspective(aspect_ratio, 180.0, 0.01, 100.0);
+            vp.projection = perspective(aspect_ratio, half_pi(), 0.01, 100.0);
 
             Swapchain::new(
                 device.clone(),
@@ -865,7 +865,7 @@ impl System {
         let image_extent: [u32; 2] = window.inner_size().into();
 
         let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
-        self.vp.projection = perspective(aspect_ratio, 180.0, 0.01, 100.0);
+        self.vp.projection = perspective(aspect_ratio, half_pi(), 0.01, 100.0);
 
         let (new_swapchain, new_images) = match self.swapchain.recreate(SwapchainCreateInfo {
             image_extent,
