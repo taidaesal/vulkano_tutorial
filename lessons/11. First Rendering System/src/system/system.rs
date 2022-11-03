@@ -523,8 +523,7 @@ impl System {
         )
         .unwrap();
 
-        let mut commands = self.commands.take().unwrap();
-        commands
+        self.commands.as_mut().unwrap()
             .next_subpass(SubpassContents::Inline)
             .unwrap()
             .bind_pipeline_graphics(self.ambient_pipeline.clone())
@@ -538,7 +537,6 @@ impl System {
             .bind_vertex_buffers(0, self.dummy_verts.clone())
             .draw(self.dummy_verts.len() as u32, 1, 0, 0)
             .unwrap();
-        self.commands = Some(commands);
     }
 
     pub fn directional(&mut self, directional_light: &DirectionalLight) {
@@ -580,8 +578,7 @@ impl System {
         )
         .unwrap();
 
-        let mut commands = self.commands.take().unwrap();
-        commands
+        self.commands.as_mut().unwrap()
             .set_viewport(0, [self.viewport.clone()])
             .bind_pipeline_graphics(self.directional_pipeline.clone())
             .bind_vertex_buffers(0, self.dummy_verts.clone())
@@ -593,8 +590,6 @@ impl System {
             )
             .draw(self.dummy_verts.len() as u32, 1, 0, 0)
             .unwrap();
-
-        self.commands = Some(commands);
     }
 
     pub fn finish(&mut self, previous_frame_end: &mut Option<Box<dyn GpuFuture>>) {
@@ -724,8 +719,7 @@ impl System {
         )
         .unwrap();
 
-        let mut commands = self.commands.take().unwrap();
-        commands
+        self.commands.as_mut().unwrap()
             .set_viewport(0, [self.viewport.clone()])
             .bind_pipeline_graphics(self.deferred_pipeline.clone())
             .bind_descriptor_sets(
@@ -737,8 +731,6 @@ impl System {
             .bind_vertex_buffers(0, vertex_buffer.clone())
             .draw(vertex_buffer.len() as u32, 1, 0, 0)
             .unwrap();
-
-        self.commands = Some(commands);
     }
 
     #[allow(dead_code)]
