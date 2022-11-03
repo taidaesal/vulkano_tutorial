@@ -562,7 +562,9 @@ impl System {
         )
         .unwrap();
 
-        self.commands.as_mut().unwrap()
+        self.commands
+            .as_mut()
+            .unwrap()
             .next_subpass(SubpassContents::Inline)
             .unwrap()
             .bind_pipeline_graphics(self.ambient_pipeline.clone())
@@ -597,7 +599,7 @@ impl System {
             }
         }
 
-        let directional_uniform_subbuffer =
+        let directional_subbuffer =
             self.generate_directional_buffer(&self.directional_buffer, &directional_light);
 
         let directional_layout = self
@@ -612,12 +614,14 @@ impl System {
             [
                 WriteDescriptorSet::image_view(0, self.color_buffer.clone()),
                 WriteDescriptorSet::image_view(1, self.normal_buffer.clone()),
-                WriteDescriptorSet::buffer(2, directional_uniform_subbuffer.clone()),
+                WriteDescriptorSet::buffer(2, directional_subbuffer.clone()),
             ],
         )
         .unwrap();
 
-        self.commands.as_mut().unwrap()
+        self.commands
+            .as_mut()
+            .unwrap()
             .set_viewport(0, [self.viewport.clone()])
             .bind_pipeline_graphics(self.directional_pipeline.clone())
             .bind_vertex_buffers(0, self.dummy_verts.clone())
@@ -721,7 +725,7 @@ impl System {
             }
         }
 
-        let model_uniform_subbuffer = {
+        let model_subbuffer = {
             let (model_mat, normal_mat) = model.model_matrices();
 
             let uniform_data = deferred_vert::ty::Model_Data {
@@ -741,10 +745,7 @@ impl System {
         let model_set = PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,
             model_layout.clone(),
-            [WriteDescriptorSet::buffer(
-                0,
-                model_uniform_subbuffer.clone(),
-            )],
+            [WriteDescriptorSet::buffer(0, model_subbuffer.clone())],
         )
         .unwrap();
 
@@ -759,7 +760,9 @@ impl System {
         )
         .unwrap();
 
-        self.commands.as_mut().unwrap()
+        self.commands
+            .as_mut()
+            .unwrap()
             .set_viewport(0, [self.viewport.clone()])
             .bind_pipeline_graphics(self.deferred_pipeline.clone())
             .bind_descriptor_sets(
@@ -799,7 +802,7 @@ impl System {
 
         model.translate(directional_light.get_position());
 
-        let model_uniform_subbuffer = {
+        let model_subbuffer = {
             let (model_mat, normal_mat) = model.model_matrices();
 
             let uniform_data = deferred_vert::ty::Model_Data {
@@ -819,10 +822,7 @@ impl System {
         let model_set = PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,
             model_layout.clone(),
-            [WriteDescriptorSet::buffer(
-                0,
-                model_uniform_subbuffer.clone(),
-            )],
+            [WriteDescriptorSet::buffer(0, model_subbuffer.clone())],
         )
         .unwrap();
 
@@ -837,7 +837,9 @@ impl System {
         )
         .unwrap();
 
-        self.commands.as_mut().unwrap()
+        self.commands
+            .as_mut()
+            .unwrap()
             .bind_pipeline_graphics(self.light_obj_pipeline.clone())
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,
