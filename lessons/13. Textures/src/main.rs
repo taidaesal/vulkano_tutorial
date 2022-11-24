@@ -52,7 +52,6 @@ use png;
 use std::io::Cursor;
 use std::sync::Arc;
 
-
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
 struct Vertex {
@@ -285,7 +284,7 @@ fn main() {
         .build(device.clone())
         .unwrap();
 
-    let vertices =  [
+    let vertices = [
         Vertex {
             position: [-0.5, -0.5, -0.5],
             uv: [0.0, 0.0],
