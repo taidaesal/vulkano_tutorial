@@ -13,6 +13,6 @@ members = [
     "lessons/11. First Rendering System",
     "lessons/11.5. Light Objects",
     "lessons/12. Light III",
-    # "lessons/13. Textures",
+    "lessons/13. Textures",
     # "lessons/14. Text",
 ]
