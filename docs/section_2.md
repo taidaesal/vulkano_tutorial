@@ -54,29 +54,30 @@ Now we come to the fun part of the lesson, writing our own shaders. As a reminde
 
 ```rust
 mod vs {
-    vulkano_shaders::shader!{
+    vulkano_shaders::shader! {
         ty: "vertex",
         src: "
-#version 450
-layout(location = 0) in vec3 position;
+            #version 450
+            layout(location = 0) in vec3 position;
 
-void main() {
-    gl_Position = vec4(position, 1.0);
-}"
+            void main() {
+                gl_Position = vec4(position, 1.0);
+            }
+        "
     }
 }
 
 mod fs {
-    vulkano_shaders::shader!{
+    vulkano_shaders::shader! {
         ty: "fragment",
         src: "
-#version 450
-layout(location = 0) out vec4 f_color;
+            #version 450
+            layout(location = 0) out vec4 f_color;
 
-void main() {
-    f_color = vec4(1.0, 0.0, 0.0, 1.0);
-}
-"
+            void main() {
+                f_color = vec4(1.0, 0.0, 0.0, 1.0);
+            }
+        "
     }
 }
 
@@ -140,12 +141,37 @@ In understanding how to read this, keep in mind that each function call gets cal
 
 Before we can go about using data to draw anything we need to store that data somewhere our graphics hardware can see it. We do this using buffers.
 
+First we have to create a memory allocator, up near where we setup the command buffer allocator:
+
 ```rust
-let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, [
-    Vertex { position: [-0.5, 0.5, 0.0] },
-    Vertex { position: [0.5, 0.5, 0.0] },
-    Vertex { position: [0.0, -0.5, 0.0] }
-].iter().cloned()).unwrap();
+let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+```
+
+Then we can setup the vertex buffer.
+
+```rust
+let vertices = [
+    Vertex {
+        position: [-0.5, 0.5, 0.0],
+    },
+    Vertex {
+        position: [0.5, 0.5, 0.0],
+    },
+    Vertex {
+        position: [0.0, -0.5, 0.0],
+    },
+];
+
+let vertex_buffer = CpuAccessibleBuffer::from_iter(
+    &memory_allocator,
+    BufferUsage {
+        vertex_buffer: true,
+        ..BufferUsage::empty()
+    },
+    false,
+    vertices,
+)
+.unwrap();
 ```
 
 Here we create a `CpuAccessibleBuffer` and fill it from an iterator we've manually specified. If this seems like an odd amount of work to do for a three-member array just remember that a graphics card is basically an entirely separate computer that just so happens to live in the same case as the rest of your computer. A graphics card can not look into a computer's main memory the way a regular program can which means we need to perform special operations to get our data over to the graphics hardware where we want it.
@@ -185,10 +211,11 @@ We've drawn our first triangle but isn't it a bit, you know, boring? Let's spice
 Let's go back to our `Vertex` definition and update it to include a "color" field.
 
 ```rust
-#[derive(Default, Debug, Clone)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
 struct Vertex {
     position: [f32; 3],
-    color: [f32; 3]
+    color: [f32; 3],
 }
 vulkano::impl_vertex!(Vertex, position, color);
 ```
@@ -204,57 +231,68 @@ Let's update our shaders to take a second input.
 
 ```rust
 mod vs {
-    vulkano_shaders::shader!{
-    ty: "vertex",
-    src: "
-#version 450
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec3 color;
+    vulkano_shaders::shader! {
+        ty: "vertex",
+        src: "
+            #version 450
+            layout(location = 0) in vec3 position;
+            layout(location = 1) in vec3 color;
 
-layout(location = 0) out vec3 out_color;
+            layout(location = 0) out vec3 out_color;
 
-void main() {
-    gl_Position = vec4(position, 1.0);
-    out_color = color;
-}"
+            void main() {
+                gl_Position = vec4(position, 1.0);
+                out_color = color;
+            }
+        "
     }
 }
 
 mod fs {
-    vulkano_shaders::shader!{
-    ty: "fragment",
-    src: "
-#version 450
-layout(location = 0) in vec3 in_color;
+    vulkano_shaders::shader! {
+        ty: "fragment",
+        src: "
+            #version 450
+            layout(location = 0) in vec3 in_color;
 
-layout(location = 0) out vec4 f_color;
+            layout(location = 0) out vec4 f_color;
 
-void main() {
-    f_color = vec4(in_color, 1.0);
-}
-"
+            void main() {
+                f_color = vec4(in_color, 1.0);
+            }
+        "
     }
 }
+
 ```
 
 In the vertex shader we have a new line, `layout(location = 1) in vec3 color;`, which is what tells our shader to expect a second vec3 datatype named "color" to be supplied by the calling application. Using `location = 1` is optional but lets us make very clear exactly what order we need our input data to be in.
 
-Another new line in the vertex shader is `layout(location = 0) out vec3 out_color;` which says that the vertex shader has a new (not built-in like `gl_position`) output. For our input we needed to name it `color` because that's what we named the data vertex type but we can name our output variable whatever we want.
+Another new line in the vertex shader is `layout(location = 0) out vec3 out_color;` which says that the vertex shader has a new (not built-in like `gl_Position`) output. For our input we needed to name it `color` because that's what we named the data vertex type but we can name our output variable whatever we want.
 
 Outputting our new color input to the waiting fragment shader is simple and accomplished with the line `out_color = color;`.
 
 In the fragment shader we have added a line to accept our new input, `layout(location = 0) in vec3 in_color;`. This works exactly the same way as similar lines in the vertex shader, but this time the input is coming from the vertex shader rather than a buffer of input data.
 
-#### Expanded buffer
+#### Expanded vertex buffer
 
-The update to the buffer is very straightforward and I don't think requires any particular explanation.
+The update to the vertices in the vertex buffer is very straightforward and I don't think requires any particular explanation.
 
 ```rust
-let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, [
-    Vertex { position: [-0.5, 0.5, 0.0], color: [1.0, 0.0, 0.0] },
-    Vertex { position: [0.5, 0.5, 0.0], color: [0.0, 1.0, 0.0] },
-    Vertex { position: [0.0, -0.5, 0.0], color: [0.0, 0.0, 1.0] }
-].iter().cloned()).unwrap();
+let vertices = [
+    Vertex {
+        position: [-0.5, 0.5, 0.0],
+        color: [1.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [0.5, 0.5, 0.0],
+        color: [0.0, 1.0, 0.0],
+    },
+    Vertex {
+        position: [0.0, -0.5, 0.0],
+        color: [0.0, 0.0, 1.0],
+    },
+];
 ```
 
 #### Run it again
