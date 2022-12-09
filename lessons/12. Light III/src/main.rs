@@ -23,9 +23,9 @@ fn main() {
     let mut system = System::new(&event_loop);
 
     system.set_view(&look_at(
-        &vec3(0.0, 0.0, 0.01),
+        &vec3(0.0, 0.0, 0.1),
         &vec3(0.0, 0.0, 0.0),
-        &vec3(0.0, -1.0, 0.0),
+        &vec3(0.0, 1.0, 0.0),
     ));
 
     let mut previous_frame_end =
@@ -34,12 +34,12 @@ fn main() {
     let mut cube1 = Model::new("data/models/cube.obj")
         .specular(0.5, 12.0)
         .build();
-    cube1.translate(vec3(1.1, 0.0, -2.0));
+    cube1.translate(vec3(1.1, 0.0, -4.0));
 
     let mut cube2 = Model::new("data/models/cube.obj")
         .specular(0.5, 128.0)
         .build();
-    cube2.translate(vec3(-1.1, 0.0, -2.0));
+    cube2.translate(vec3(-1.1, 0.0, -4.0));
 
     let rotation_start = Instant::now();
 

@@ -2,8 +2,8 @@
 
 layout(input_attachment_index = 0, set = 0, binding = 0) uniform subpassInput u_color;
 layout(input_attachment_index = 1, set = 0, binding = 1) uniform subpassInput u_normals;
-layout(input_attachment_index = 1, set = 0, binding = 2) uniform subpassInput u_frag_location;
-layout(input_attachment_index = 1, set = 0, binding = 3) uniform subpassInput u_specular;
+layout(input_attachment_index = 2, set = 0, binding = 2) uniform subpassInput u_frag_location;
+layout(input_attachment_index = 3, set = 0, binding = 3) uniform subpassInput u_specular;
 
 layout(set = 0, binding = 4) uniform Directional_Light_Data {
     vec4 position;

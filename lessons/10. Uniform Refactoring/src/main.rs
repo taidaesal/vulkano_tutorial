@@ -6,16 +6,21 @@
 // from code provided by the Vulkano project under
 // the MIT license
 
+use vulkano::buffer::cpu_pool::CpuBufferPoolSubbuffer;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
+use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+};
+use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
+use vulkano::device::physical::PhysicalDeviceType;
 use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
 use vulkano::format::Format;
 use vulkano::image::view::ImageView;
 use vulkano::image::{AttachmentImage, ImageAccess, SwapchainImage};
 use vulkano::instance::{Instance, InstanceCreateInfo};
-use vulkano::memory::pool::StdMemoryPool;
+use vulkano::memory::allocator::StandardMemoryAllocator;
 use vulkano::pipeline::graphics::color_blend::{
     AttachmentBlend, BlendFactor, BlendOp, ColorBlendState,
 };
@@ -24,14 +29,14 @@ use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::rasterization::{CullMode, RasterizationState};
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::Pipeline;
-use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
 use vulkano::swapchain::{
     self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+    SwapchainPresentInfo,
 };
 use vulkano::sync::{self, FlushError, GpuFuture};
-use vulkano::Version;
+use vulkano::{Version, VulkanLibrary};
 
 use vulkano_win::VkSurfaceBuild;
 
@@ -39,7 +44,7 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
-use nalgebra_glm::{identity, look_at, perspective, pi, vec3, TMat4};
+use nalgebra_glm::{half_pi, identity, look_at, perspective, pi, vec3, TMat4};
 
 use model_loader::Model;
 use model_loader::{DummyVertex, NormalVertex};
@@ -135,11 +140,11 @@ fn main() {
     let mut model = Model::new("data/models/teapot.obj").build();
     let mut vp = VP::new();
     vp.view = look_at(
-        &vec3(0.0, 0.0, 0.01),
+        &vec3(0.0, 0.0, 0.1),
         &vec3(0.0, 0.0, 0.0),
-        &vec3(0.0, -1.0, 0.0),
+        &vec3(0.0, 1.0, 0.0),
     );
-    model.translate(vec3(0.0, 0.0, -3.5));
+    model.translate(vec3(0.0, 0.0, -5.0));
 
     let ambient_light = AmbientLight {
         color: [1.0, 1.0, 1.0],
@@ -151,12 +156,18 @@ fn main() {
     };
 
     let instance = {
-        let extensions = vulkano_win::required_extensions();
-        Instance::new(InstanceCreateInfo {
-            enabled_extensions: extensions,
-            max_api_version: Some(Version::V1_1),
-            ..Default::default()
-        })
+        let library = VulkanLibrary::new().unwrap();
+        let extensions = vulkano_win::required_extensions(&library);
+
+        Instance::new(
+            library,
+            InstanceCreateInfo {
+                enabled_extensions: extensions,
+                enumerate_portability: true, // required for MoltenVK on macOS
+                max_api_version: Some(Version::V1_1),
+                ..Default::default()
+            },
+        )
         .unwrap()
     };
 
@@ -165,33 +176,46 @@ fn main() {
         .build_vk_surface(&event_loop, instance.clone())
         .unwrap();
 
-    let device_ext = DeviceExtensions {
+    let device_extensions = DeviceExtensions {
         khr_swapchain: true,
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
 
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_ext))
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| p.supported_extensions().contains(&device_extensions))
         .filter_map(|p| {
-            p.queue_families()
-                .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
-                .map(|q| (p, q))
+            p.queue_family_properties()
+                .iter()
+                .enumerate()
+                .position(|(i, q)| {
+                    // pick first queue_familiy_index that handles graphics and can draw on the surface created by winit
+                    q.queue_flags.graphics && p.surface_support(i as u32, &surface).unwrap_or(false)
+                })
+                .map(|i| (p, i as u32))
         })
-        .min_by_key(|(p, _)| match p.properties().device_type {
-            PhysicalDeviceType::DiscreteGpu => 0,
-            PhysicalDeviceType::IntegratedGpu => 1,
-            PhysicalDeviceType::VirtualGpu => 2,
-            PhysicalDeviceType::Cpu => 3,
-            PhysicalDeviceType::Other => 4,
+        .min_by_key(|(p, _)| {
+            // lower score for preferred device types
+            match p.properties().device_type {
+                PhysicalDeviceType::DiscreteGpu => 0,
+                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 3,
+                PhysicalDeviceType::Other => 4,
+                _ => 5,
+            }
         })
-        .unwrap();
+        .expect("No suitable physical device found");
 
     let (device, mut queues) = Device::new(
         physical_device,
         DeviceCreateInfo {
-            enabled_extensions: physical_device.required_extensions().union(&device_ext),
-
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            enabled_extensions: device_extensions,
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
             ..Default::default()
         },
     )
@@ -200,19 +224,27 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let (mut swapchain, images) = {
-        let dim: [u32; 2] = surface.window().inner_size().into();
-        let caps = physical_device
+        let caps = device
+            .physical_device()
             .surface_capabilities(&surface, Default::default())
             .unwrap();
+
         let usage = caps.supported_usage_flags;
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
+
         let image_format = Some(
-            physical_device
+            device
+                .physical_device()
                 .surface_formats(&surface, Default::default())
                 .unwrap()[0]
                 .0,
         );
-        vp.projection = perspective(dim[0] as f32 / dim[1] as f32, 180.0, 0.01, 100.0);
+
+        let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+        let image_extent: [u32; 2] = window.inner_size().into();
+
+        let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
+        vp.projection = perspective(aspect_ratio, half_pi(), 0.01, 100.0);
 
         Swapchain::new(
             device.clone(),
@@ -220,7 +252,7 @@ fn main() {
             SwapchainCreateInfo {
                 min_image_count: caps.min_image_count,
                 image_format,
-                image_extent: surface.window().inner_size().into(),
+                image_extent,
                 image_usage: usage,
                 composite_alpha: alpha,
                 ..Default::default()
@@ -229,32 +261,17 @@ fn main() {
         .unwrap()
     };
 
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), Default::default());
+
     let deferred_vert = deferred_vert::load(device.clone()).unwrap();
     let deferred_frag = deferred_frag::load(device.clone()).unwrap();
     let directional_vert = directional_vert::load(device.clone()).unwrap();
     let directional_frag = directional_frag::load(device.clone()).unwrap();
     let ambient_vert = ambient_vert::load(device.clone()).unwrap();
     let ambient_frag = ambient_frag::load(device.clone()).unwrap();
-
-    let vp_buffer = CpuAccessibleBuffer::from_data(
-        device.clone(),
-        BufferUsage::all(),
-        false,
-        deferred_vert::ty::VP_Data {
-            view: vp.view.into(),
-            projection: vp.projection.into(),
-        },
-    )
-    .unwrap();
-
-    let model_uniform_buffer =
-        CpuBufferPool::<deferred_vert::ty::Model_Data>::uniform_buffer(device.clone());
-    let ambient_buffer =
-        CpuBufferPool::<ambient_frag::ty::Ambient_Data>::uniform_buffer(device.clone());
-    let directional_buffer =
-        CpuBufferPool::<directional_frag::ty::Directional_Light_Data>::uniform_buffer(
-            device.clone(),
-        );
 
     let render_pass = vulkano::ordered_passes_renderpass!(device.clone(),
         attachments: {
@@ -357,19 +374,54 @@ fn main() {
         .build(device.clone())
         .unwrap();
 
+    let model_uniform_buffer: CpuBufferPool<deferred_vert::ty::Model_Data> =
+        CpuBufferPool::uniform_buffer(memory_allocator.clone());
+    let ambient_buffer: CpuBufferPool<ambient_frag::ty::Ambient_Data> =
+        CpuBufferPool::uniform_buffer(memory_allocator.clone());
+    let directional_buffer: CpuBufferPool<directional_frag::ty::Directional_Light_Data> =
+        CpuBufferPool::uniform_buffer(memory_allocator.clone());
+
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
-        BufferUsage::all(),
+        &memory_allocator,
+        BufferUsage {
+            vertex_buffer: true,
+            ..BufferUsage::empty()
+        },
         false,
         model.data().iter().cloned(),
     )
     .unwrap();
 
     let dummy_verts = CpuAccessibleBuffer::from_iter(
-        device.clone(),
-        BufferUsage::all(),
+        &memory_allocator,
+        BufferUsage {
+            vertex_buffer: true,
+            ..BufferUsage::empty()
+        },
         false,
         DummyVertex::list().iter().cloned(),
+    )
+    .unwrap();
+
+    let vp_buffer = CpuAccessibleBuffer::from_data(
+        &memory_allocator,
+        BufferUsage {
+            uniform_buffer: true,
+            ..BufferUsage::empty()
+        },
+        false,
+        deferred_vert::ty::VP_Data {
+            view: vp.view.into(),
+            projection: vp.projection.into(),
+        },
+    )
+    .unwrap();
+
+    let vp_layout = deferred_pipeline.layout().set_layouts().get(0).unwrap();
+    let mut vp_set = PersistentDescriptorSet::new(
+        &descriptor_set_allocator,
+        vp_layout.clone(),
+        [WriteDescriptorSet::buffer(0, vp_buffer)],
     )
     .unwrap();
 
@@ -379,21 +431,18 @@ fn main() {
         depth_range: 0.0..1.0,
     };
 
-    let (mut framebuffers, mut color_buffer, mut normal_buffer) =
-        window_size_dependent_setup(device.clone(), &images, render_pass.clone(), &mut viewport);
+    let (mut framebuffers, mut color_buffer, mut normal_buffer) = window_size_dependent_setup(
+        &memory_allocator,
+        &images,
+        render_pass.clone(),
+        &mut viewport,
+    );
 
     let mut recreate_swapchain = false;
 
     let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
 
     let rotation_start = Instant::now();
-
-    let deferred_layout = deferred_pipeline.layout().set_layouts().get(0).unwrap();
-    let mut vp_set = PersistentDescriptorSet::new(
-        deferred_layout.clone(),
-        [WriteDescriptorSet::buffer(0, vp_buffer.clone())],
-    )
-    .unwrap();
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -416,37 +465,40 @@ fn main() {
                 .cleanup_finished();
 
             if recreate_swapchain {
-                let dimensions: [u32; 2] = surface.window().inner_size().into();
+                let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+                let image_extent: [u32; 2] = window.inner_size().into();
+
+                let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
+                vp.projection = perspective(aspect_ratio, half_pi(), 0.01, 100.0);
+
                 let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
-                    image_extent: surface.window().inner_size().into(),
+                    image_extent,
                     ..swapchain.create_info()
                 }) {
                     Ok(r) => r,
                     Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
                     Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
                 };
-                vp.projection = perspective(
-                    dimensions[0] as f32 / dimensions[1] as f32,
-                    180.0,
-                    0.01,
-                    100.0,
-                );
 
-                swapchain = new_swapchain;
                 let (new_framebuffers, new_color_buffer, new_normal_buffer) =
                     window_size_dependent_setup(
-                        device.clone(),
+                        &memory_allocator,
                         &new_images,
                         render_pass.clone(),
                         &mut viewport,
                     );
+
+                swapchain = new_swapchain;
                 framebuffers = new_framebuffers;
                 color_buffer = new_color_buffer;
                 normal_buffer = new_normal_buffer;
 
                 let new_vp_buffer = CpuAccessibleBuffer::from_data(
-                    device.clone(),
-                    BufferUsage::all(),
+                    &memory_allocator,
+                    BufferUsage {
+                        uniform_buffer: true,
+                        ..BufferUsage::empty()
+                    },
                     false,
                     deferred_vert::ty::VP_Data {
                         view: vp.view.into(),
@@ -455,17 +507,18 @@ fn main() {
                 )
                 .unwrap();
 
-                let deferred_layout = deferred_pipeline.layout().set_layouts().get(0).unwrap();
+                let vp_layout = deferred_pipeline.layout().set_layouts().get(0).unwrap();
                 vp_set = PersistentDescriptorSet::new(
-                    deferred_layout.clone(),
-                    [WriteDescriptorSet::buffer(0, new_vp_buffer.clone())],
+                    &descriptor_set_allocator,
+                    vp_layout.clone(),
+                    [WriteDescriptorSet::buffer(0, new_vp_buffer)],
                 )
                 .unwrap();
 
                 recreate_swapchain = false;
             }
 
-            let (image_num, suboptimal, acquire_future) =
+            let (image_index, suboptimal, acquire_future) =
                 match swapchain::acquire_next_image(swapchain.clone(), None) {
                     Ok(r) => r,
                     Err(AcquireError::OutOfDate) => {
@@ -480,13 +533,13 @@ fn main() {
             }
 
             let clear_values = vec![
-                [0.0, 0.0, 0.0, 1.0].into(),
-                [0.0, 0.0, 0.0, 1.0].into(),
-                [0.0, 0.0, 0.0, 1.0].into(),
-                1f32.into(),
+                Some([0.0, 0.0, 0.0, 1.0].into()),
+                Some([0.0, 0.0, 0.0, 1.0].into()),
+                Some([0.0, 0.0, 0.0, 1.0].into()),
+                Some(1.0.into()),
             ];
 
-            let model_uniform_subbuffer = {
+            let model_subbuffer = {
                 let elapsed = rotation_start.elapsed().as_secs() as f64
                     + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
                 let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
@@ -502,62 +555,67 @@ fn main() {
                     normals: normal_mat.into(),
                 };
 
-                model_uniform_buffer.next(uniform_data).unwrap()
+                model_uniform_buffer.from_data(uniform_data).unwrap()
             };
 
-            let ambient_uniform_subbuffer = {
+            let ambient_subbuffer = {
                 let uniform_data = ambient_frag::ty::Ambient_Data {
                     color: ambient_light.color.into(),
                     intensity: ambient_light.intensity.into(),
                 };
 
-                ambient_buffer.next(uniform_data).unwrap()
+                ambient_buffer.from_data(uniform_data).unwrap()
             };
 
-            let deferred_layout_model = deferred_pipeline.layout().set_layouts().get(1).unwrap();
+            let model_layout = deferred_pipeline.layout().set_layouts().get(1).unwrap();
             let model_set = PersistentDescriptorSet::new(
-                deferred_layout_model.clone(),
-                [WriteDescriptorSet::buffer(
-                    0,
-                    model_uniform_subbuffer.clone(),
-                )],
+                &descriptor_set_allocator,
+                model_layout.clone(),
+                [WriteDescriptorSet::buffer(0, model_subbuffer.clone())],
             )
             .unwrap();
 
             let ambient_layout = ambient_pipeline.layout().set_layouts().get(0).unwrap();
             let ambient_set = PersistentDescriptorSet::new(
+                &descriptor_set_allocator,
                 ambient_layout.clone(),
                 [
                     WriteDescriptorSet::image_view(0, color_buffer.clone()),
-                    WriteDescriptorSet::buffer(1, ambient_uniform_subbuffer.clone()),
+                    WriteDescriptorSet::buffer(1, ambient_subbuffer.clone()),
                 ],
             )
             .unwrap();
 
-            let directional_uniform_subbuffer =
+            let directional_subbuffer =
                 generate_directional_buffer(&directional_buffer, &directional_light);
             let directional_layout = directional_pipeline.layout().set_layouts().get(0).unwrap();
             let directional_set = PersistentDescriptorSet::new(
+                &descriptor_set_allocator,
                 directional_layout.clone(),
                 [
                     WriteDescriptorSet::image_view(0, color_buffer.clone()),
                     WriteDescriptorSet::image_view(1, normal_buffer.clone()),
-                    WriteDescriptorSet::buffer(2, directional_uniform_subbuffer.clone()),
+                    WriteDescriptorSet::buffer(2, directional_subbuffer.clone()),
                 ],
             )
             .unwrap();
 
             let mut commands = AutoCommandBufferBuilder::primary(
-                device.clone(),
-                queue.family(),
+                &command_buffer_allocator,
+                queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
             )
             .unwrap();
+
             commands
                 .begin_render_pass(
-                    framebuffers[image_num].clone(),
+                    RenderPassBeginInfo {
+                        clear_values,
+                        ..RenderPassBeginInfo::framebuffer(
+                            framebuffers[image_index as usize].clone(),
+                        )
+                    },
                     SubpassContents::Inline,
-                    clear_values,
                 )
                 .unwrap()
                 .set_viewport(0, [viewport.clone()])
@@ -594,6 +652,7 @@ fn main() {
                 .unwrap()
                 .end_render_pass()
                 .unwrap();
+
             let command_buffer = commands.build().unwrap();
 
             let future = previous_frame_end
@@ -602,7 +661,10 @@ fn main() {
                 .join(acquire_future)
                 .then_execute(queue.clone(), command_buffer)
                 .unwrap()
-                .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                .then_swapchain_present(
+                    queue.clone(),
+                    SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+                )
                 .then_signal_fence_and_flush();
 
             match future {
@@ -624,27 +686,22 @@ fn main() {
 }
 
 fn generate_directional_buffer(
-    pool: &vulkano::buffer::cpu_pool::CpuBufferPool<directional_frag::ty::Directional_Light_Data>,
+    pool: &CpuBufferPool<directional_frag::ty::Directional_Light_Data>,
     light: &DirectionalLight,
-) -> Arc<
-    vulkano::buffer::cpu_pool::CpuBufferPoolSubbuffer<
-        directional_frag::ty::Directional_Light_Data,
-        Arc<StdMemoryPool>,
-    >,
-> {
+) -> Arc<CpuBufferPoolSubbuffer<directional_frag::ty::Directional_Light_Data>> {
     let uniform_data = directional_frag::ty::Directional_Light_Data {
         position: light.position.into(),
         color: light.color.into(),
     };
 
-    pool.next(uniform_data).unwrap()
+    pool.from_data(uniform_data).unwrap()
 }
 
 /// This method is called once during initialization, then again whenever the window is resized
 /// stolen from the vulkano example
 fn window_size_dependent_setup(
-    device: Arc<Device>,
-    images: &[Arc<SwapchainImage<Window>>],
+    allocator: &StandardMemoryAllocator,
+    images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> (
@@ -654,22 +711,25 @@ fn window_size_dependent_setup(
 ) {
     let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
+
     let depth_buffer = ImageView::new_default(
-        AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
+        AttachmentImage::transient(allocator, dimensions, Format::D16_UNORM).unwrap(),
     )
     .unwrap();
+
     let color_buffer = ImageView::new_default(
         AttachmentImage::transient_input_attachment(
-            device.clone(),
+            allocator,
             dimensions,
             Format::A2B10G10R10_UNORM_PACK32,
         )
         .unwrap(),
     )
     .unwrap();
+
     let normal_buffer = ImageView::new_default(
         AttachmentImage::transient_input_attachment(
-            device.clone(),
+            allocator,
             dimensions,
             Format::R16G16B16A16_SFLOAT,
         )
@@ -677,27 +737,25 @@ fn window_size_dependent_setup(
     )
     .unwrap();
 
-    (
-        images
-            .iter()
-            .map(|image| {
-                let view = ImageView::new_default(image.clone()).unwrap();
-                Framebuffer::new(
-                    render_pass.clone(),
-                    FramebufferCreateInfo {
-                        attachments: vec![
-                            view,
-                            color_buffer.clone(),
-                            normal_buffer.clone(),
-                            depth_buffer.clone(),
-                        ],
-                        ..Default::default()
-                    },
-                )
-                .unwrap()
-            })
-            .collect::<Vec<_>>(),
-        color_buffer.clone(),
-        normal_buffer.clone(),
-    )
+    let framebuffers = images
+        .iter()
+        .map(|image| {
+            let view = ImageView::new_default(image.clone()).unwrap();
+            Framebuffer::new(
+                render_pass.clone(),
+                FramebufferCreateInfo {
+                    attachments: vec![
+                        view,
+                        color_buffer.clone(),
+                        normal_buffer.clone(),
+                        depth_buffer.clone(),
+                    ],
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
+
+    (framebuffers, color_buffer.clone(), normal_buffer.clone())
 }
