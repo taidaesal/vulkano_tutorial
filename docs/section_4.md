@@ -14,15 +14,32 @@ We're four lessons into this thing but we've been cheating the whole time. We ha
 Let's change our code so we have two triangles with one being white, and the other black. For the sake of this example we'll get rid of the translation/rotation code from last time and replace the model matrix with the simple identity matrix.
 
 ```rust
-let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, [
-    Vertex { position: [-0.5, 0.5, -0.5], color: [0.0, 0.0, 0.0] },
-    Vertex { position: [0.5, 0.5, -0.5], color: [0.0, 0.0, 0.0] },
-    Vertex { position: [0.0, -0.5, -0.5], color: [0.0, 0.0, 0.0] },
-
-    Vertex { position: [-0.5, -0.5, -0.6], color: [1.0, 1.0, 1.0] },
-    Vertex { position: [0.5, -0.5, -0.6], color: [1.0, 1.0, 1.0] },
-    Vertex { position: [0.0, 0.5, -0.6], color: [1.0, 1.0, 1.0] }
-].iter().cloned()).unwrap();
+let vertices = [
+    Vertex {
+        position: [-0.5, 0.5, -0.5],
+        color: [0.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [0.5, 0.5, -0.5],
+        color: [0.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [0.0, -0.5, -0.5],
+        color: [0.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [-0.5, -0.5, -0.6],
+        color: [1.0, 1.0, 1.0],
+    },
+    Vertex {
+        position: [0.5, -0.5, -0.6],
+        color: [1.0, 1.0, 1.0],
+    },
+    Vertex {
+        position: [0.0, 0.5, -0.6],
+        color: [1.0, 1.0, 1.0],
+    },
+];
 ```
 
 Pretty simple; we have two triangles, one behind the other. The one in front is black and the one in back is in white. Let's run the code and see what happens.
@@ -90,10 +107,12 @@ We have a new framebuffer attachment declared in our renderpass so we need to ma
 
 ```rust
 let dimensions = images[0].dimensions().width_height();
+viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 let depth_buffer = ImageView::new_default(
-    AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
+    AttachmentImage::transient(allocator, dimensions, Format::D16_UNORM).unwrap(),
 )
 .unwrap();
+
 images
     .iter()
     .map(|image| {
@@ -112,12 +131,12 @@ images
 
 Our call to `AttachmentImage::transient` is how we create the actual buffer that will be used in the framebuffer attachment. Since we don't care what happens to it once we're done, it can be a transient image.
 
-Also, since this is being taken care of in our `window_size_dependent_setup` helper function, we'll need to expand the parameter list to pass in a `Device`.
+Also, since this is being taken care of in our `window_size_dependent_setup` helper function, we'll need to expand the parameter list to pass in a `StandardMemoryAllocator`, needed to create the attachment image.
 
 ```rust
 fn window_size_dependent_setup(
-    device: Arc<Device>,
-    images: &[Arc<SwapchainImage<Window>>],
+    allocator: &StandardMemoryAllocator,
+    images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {
@@ -130,11 +149,11 @@ fn window_size_dependent_setup(
 The last thing we need to do is set the clear colors. This is an easy thing to miss but important. Each framebuffer attachment we use needs to have its own clear color.
 
 ```rust
-let clear_values = vec![[0.0, 0.68, 1.0, 1.0].into(), 1f32.into()];
+let clear_values = vec![Some([0.0, 0.68, 1.0, 1.0].into()), Some(1.0.into())];
 ```
 
 Two things to notice here:
- - because our depth buffer is in a format that takes a single value per vertex rather than an array we can get away with using `1f32` as the clear value rather than a color vector
+ - because our depth buffer is in a format that takes a single value per vertex rather than an array we can get away with using `1.0` as the clear value rather than a color vector
  - the clear values **must** be listed in the same order as the buffer attachments. This is an easy thing to get wrong, so just keep it in mind.
 
 #### Running our new code
