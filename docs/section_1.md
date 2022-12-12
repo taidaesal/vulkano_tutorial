@@ -114,7 +114,7 @@ let instance = {
 };
 ```
 
-A few things to note. On the second line, `let library = ...`. Vulkano supports a few different ways to load the Vulkan API, e.g. by finding an appropriate DLL on your `LD_LIBRARY_PATH`.  The library is the part of Vulkano that either loads this DLL, or statically links to.  If this fails, check your installation of Vulkan.
+A few things to note. On the second line, `let library = ...`. Vulkano supports a few different ways to load the Vulkan API, e.g. by finding an appropriate DLL or .so on your `LD_LIBRARY_PATH`.  The library is the part of Vulkano that either dynamically loads this DLL, or uses a static linker.  If this fails, check your installation of Vulkan.
 
 On the third line, `let extensions = ...`. The Vulkan specification separates core features from those which are considered optional. Rendering to a screen is one of these optional features and we need to specifically request that our created `Instance` contains it. We can get all necessary optional features by asking `vulkano_win` what it requires. A second thing to note is `Version::V1_1`. This is how we declare the *minimum* version of Vulkan we want. We can use Vulkan functions from higher versions but if the software or hardware doesn't meet this minimum requirement the program will refuse to run.
 
