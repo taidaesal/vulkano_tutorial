@@ -47,7 +47,7 @@ pub struct Model {
     rotation: TMat4<f32>,
     model: TMat4<f32>,
     normals: TMat4<f32>,
-    requires_update: bool
+    requires_update: bool,
 }
 
 pub fn model_matrices(&mut self) -> (TMat4<f32>, TMat4<f32>) {
@@ -62,59 +62,97 @@ pub fn model_matrices(&mut self) -> (TMat4<f32>, TMat4<f32>) {
 
 `main.rs`
 ```rust
-let (model_mat, normal_mat) = cube.model_matrices();
+let (model_mat, normal_mat) = model.model_matrices();
 ```
 
 #### Change our VP Buffer
 
 So far all our uniforms have been created using `CpuBufferPool`. This is because all our uniforms have been updated every frame so we want something that supports frequent updates. However, now that we've turned our MVP structure into a VP one, we have a situation where one of our uniform inputs *won't* need to be updated. Our view and projection matrices will only need to be updated when the screen is resized.
 
+Right now we re-declare `deferred_set` every frame. This was fine when the data it held was also changing every frame but now that we've changed that we need to stop recreating the associated descriptor set every frame as well.
+
+Let's move our initial declaration to just above our main rendering loop. While we're at it, let's help keep the code readable by re-naming `deferred_set` to something more descriptive, like `vp_set`
+```rust
+let vp_layout = deferred_pipeline.layout().set_layouts().get(0).unwrap();
+let mut vp_set = PersistentDescriptorSet::new(
+    deferred_layout.clone(),
+    [WriteDescriptorSet::buffer(0, vp_buffer.clone())],
+)
+.unwrap();
+```
+
+We can re-create it right after we recreate our `vp_buffer` in the swapchain recreation portion of the render loop.
+```rust
+if recreate_swapchain {
+    // ...
+
+    let vp_layout = deferred_pipeline.layout().set_layouts().get(0).unwrap();
+    vp_set = PersistentDescriptorSet::new(
+        &descriptor_set_allocator,
+        vp_layout.clone(),
+        [WriteDescriptorSet::buffer(0, new_vp_buffer)],
+    )
+    .unwrap();
+
+    recreate_swapchain = false;
+}
+```
+
+With this, we maximize the performance gains of not needing to update our VP data each frame.
+
 Replace the existing mvp_buffer declaration with the following code. Also remember to add it into our swapchain recreation logic.
 ```rust
 let vp_buffer = CpuAccessibleBuffer::from_data(
-    device.clone(),
-    BufferUsage::all(),
+    &memory_allocator,
+    BufferUsage {
+        uniform_buffer: true,
+        ..BufferUsage::empty()
+    },
     false,
     deferred_vert::ty::VP_Data {
         view: vp.view.into(),
         projection: vp.projection.into(),
-    }
-).unwrap();
+    },
+)
+.unwrap();
 ```
 
 ```rust
 if recreate_swapchain {
-    let dimensions: [u32; 2] = surface.window().inner_size().into();
+    let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+    let image_extent: [u32; 2] = window.inner_size().into();
+
+    let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
+    vp.projection = perspective(aspect_ratio, half_pi(), 0.01, 100.0);
+
     let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
-        image_extent: surface.window().inner_size().into(),
+        image_extent,
         ..swapchain.create_info()
     }) {
         Ok(r) => r,
-        Err(SwapchainCreationError::UnsupportedDimensions) => return,
+        Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
         Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
     };
-    vp.projection = perspective(
-        dimensions[0] as f32 / dimensions[1] as f32,
-        180.0,
-        0.01,
-        100.0,
-    );
 
-    swapchain = new_swapchain;
     let (new_framebuffers, new_color_buffer, new_normal_buffer) =
         window_size_dependent_setup(
-            device.clone(),
+            &memory_allocator,
             &new_images,
             render_pass.clone(),
             &mut viewport,
         );
+
+    swapchain = new_swapchain;
     framebuffers = new_framebuffers;
     color_buffer = new_color_buffer;
     normal_buffer = new_normal_buffer;
 
     let new_vp_buffer = CpuAccessibleBuffer::from_data(
-        device.clone(),
-        BufferUsage::all(),
+        &memory_allocator,
+        BufferUsage {
+            uniform_buffer: true,
+            ..BufferUsage::empty()
+        },
         false,
         deferred_vert::ty::VP_Data {
             view: vp.view.into(),
@@ -123,35 +161,16 @@ if recreate_swapchain {
     )
     .unwrap();
 
-    let deferred_layout = deferred_pipeline
-        .layout()
-        .descriptor_set_layouts()
-        .get(0)
-        .unwrap();
+    let vp_layout = deferred_pipeline.layout().set_layouts().get(0).unwrap();
     vp_set = PersistentDescriptorSet::new(
-        deferred_layout.clone(),
-        [WriteDescriptorSet::buffer(0, new_vp_buffer.clone())],
+        &descriptor_set_allocator,
+        vp_layout.clone(),
+        [WriteDescriptorSet::buffer(0, new_vp_buffer)],
     )
     .unwrap();
 
     recreate_swapchain = false;
 }
-```
-
-We can remove our mvp sub-buffer declaration code and update the descriptor set to be:
-```rust
-let deferred_layout = deferred_pipeline
-    .layout()
-    .descriptor_set_layouts()
-    .get(0)
-    .unwrap();
-let deferred_set = PersistentDescriptorSet::new(
-    deferred_layout.clone(),
-    [
-        WriteDescriptorSet::buffer(0, vp_buffer.clone()),
-    ],
-)
-.unwrap();
 ```
 
 To be perfectly honest, this is a small saving. But it's the sort of thing we need to keep in mind if we want to squeeze every bit of bandwidth possible out of our graphics hardware.
@@ -192,89 +211,48 @@ On first glance this seems like the other times we've used multiple uniforms in 
 
 This is the first time we've seen more than one set of uniforms in the same shader. This is because the set containing the VP data only needs to be updated when our VP data is changed but the set containing our model data will need to be refreshed every frame. This will require some changes to our main application though, so let's leave our shaders and go back to Rust-land.
 
-#### Updating VP Descriptor Sets
-
-Right now we re-declare `deferred_set` every frame. This was fine when the data it held was also changing every frame but now that we've changed that we need to stop recreating the associated descriptor set every frame as well.
-
-Let's move our initial declaration to just above our main rendering loop. While we're at it, let's help keep the code readable by re-naming `deferred_set` to something more descriptive, like `vp_set`
-```rust
-let deferred_layout = deferred_pipeline
-    .layout()
-    .descriptor_set_layouts()
-    .get(0)
-    .unwrap();
-let mut vp_set = PersistentDescriptorSet::new(
-    deferred_layout.clone(),
-    [WriteDescriptorSet::buffer(0, vp_buffer.clone())],
-)
-.unwrap();
-```
-
-We can re-create it right after we recreate our `vp_buffer` in the swapchain recreation portion of the render loop.
-```rust
-if recreate_swapchain {
-    // ...
-
-    let deferred_layout = deferred_pipeline
-        .layout()
-        .descriptor_set_layouts()
-        .get(0)
-        .unwrap();
-    let mut vp_set = PersistentDescriptorSet::new(
-        deferred_layout.clone(),
-        [WriteDescriptorSet::buffer(0, vp_buffer.clone())],
-    )
-    .unwrap();
-
-    recreate_swapchain = false;
-}
-```
-
-With this, we maximize the performance gains of not needing to update our VP data each frame.
-
 #### Our new Model Data Descriptor Set
 
 Creating a descriptor set for our model data is pretty simple. First we need to create a new `CpuBufferPool` to hold the uniform type.
 ```rust
-let model_uniform_buffer = CpuBufferPool::<deferred_vert::ty::Model_Data>::uniform_buffer(device.clone());
+let model_uniform_buffer: CpuBufferPool<deferred_vert::ty::Model_Data> =
+    CpuBufferPool::uniform_buffer(memory_allocator.clone());
 ```
 
-The following code can go where we used to declare our deferred sub-buffer and descriptor set.
+The following code can go where we used to declare our combined uniform sub-buffer and descriptor set.
 ```rust
-let model_uniform_subbuffer = {
-    let elapsed = rotation_start.elapsed().as_secs() as f64 + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
+let model_subbuffer = {
+    let elapsed = rotation_start.elapsed().as_secs() as f64
+        + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
     let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
-    cube.zero_rotation();
-    cube.rotate(2.8, vec3(0.0, 1.0, 0.0));
-    cube.rotate(elapsed_as_radians as f32 * 50.0, vec3(0.0, 0.0, 1.0));
-    cube.rotate(elapsed_as_radians as f32 * 20.0, vec3(1.0, 0.0, 0.0));
+    model.zero_rotation();
+    model.rotate(pi(), vec3(0.0, 1.0, 0.0));
+    model.rotate(elapsed_as_radians as f32 * 50.0, vec3(0.0, 0.0, 1.0));
+    model.rotate(elapsed_as_radians as f32 * 30.0, vec3(0.0, 1.0, 0.0));
+    model.rotate(elapsed_as_radians as f32 * 20.0, vec3(1.0, 0.0, 0.0));
 
-    let (model_mat, normal_mat) = cube.model_matrices();
+    let (model_mat, normal_mat) = model.model_matrices();
 
     let uniform_data = deferred_vert::ty::Model_Data {
         model: model_mat.into(),
         normals: normal_mat.into(),
     };
 
-    model_uniform_buffer.next(uniform_data).unwrap()
+    model_uniform_buffer.from_data(uniform_data).unwrap()
 };
+```
 
-let deferred_layout_model = deferred_pipeline
-    .layout()
-    .descriptor_set_layouts()
-    .get(1)
-    .unwrap();
+```rust
+let model_layout = deferred_pipeline.layout().set_layouts().get(1).unwrap();
 let model_set = PersistentDescriptorSet::new(
-    deferred_layout_model.clone(),
-    [WriteDescriptorSet::buffer(
-        0,
-        model_uniform_subbuffer.clone(),
-    )],
+    &descriptor_set_allocator,
+    model_layout.clone(),
+    [WriteDescriptorSet::buffer(0, model_subbuffer.clone())],
 )
 .unwrap();
 ```
 
-The only real thing to notice is that we used `1` as the argument for the descriptor_set_layout for the first time in this lesson series.
+The only real thing to notice is that we used `1` as the argument to `set_layouts.get()` for the first time in this lesson series.
 
 #### Updating our Draw Command
 
@@ -293,7 +271,7 @@ Our draw command for the first render pass is pretty much the same as before. Ho
 .unwrap()
 ```
 
-As you can see, we just pass a list of the descriptor sets inside of parenthesis.
+As you can see, we just pass a list of the descriptor sets as a tuple, inside of parentheses.
 
 #### Run the Code
 
