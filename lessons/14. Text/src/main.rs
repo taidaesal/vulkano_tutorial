@@ -424,8 +424,8 @@ fn main() {
             .unwrap();
 
             let texture = {
-                let (dat, height, width) = mono.text(&now.elapsed().as_secs().to_string());
-                let dimensions = ImageDimensions::Dim2d {
+                let (image_data, height, width) = mono.text(&now.elapsed().as_secs().to_string());
+                let image_dimensions = ImageDimensions::Dim2d {
                     width: width,
                     height: height,
                     array_layers: 1,
@@ -433,8 +433,8 @@ fn main() {
 
                 let image = ImmutableImage::from_iter(
                     &memory_allocator,
-                    dat.iter().cloned(),
-                    dimensions,
+                    image_data.iter().cloned(),
+                    image_dimensions,
                     MipmapsCount::One,
                     Format::R8G8B8A8_SRGB,
                     &mut cmd_buffer_builder,
