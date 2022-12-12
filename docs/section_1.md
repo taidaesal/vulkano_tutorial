@@ -567,7 +567,7 @@ if suboptimal {
 }
 ```
 
-Remember that the `Swapchain` is actually a vector of `Image`s, only some of which will be available for our use at any given time. The first returned value is the index of the `Image` we can use for rendering.  The third returned value is a `GpuFuture` object which we can use to make sure that this function has completed before trying to use it. Notice also that we need to do some error handling to check (once again) if something has happened that requires that we recreate our swapchain.
+Remember that the `Swapchain` is actually a vector of `Image`s, only some of which will be available for our use at any given time. The first returned value is the index of the `Image` we can use for rendering. The third returned value is a `GpuFuture` object which we can use to make sure that this function has completed before trying to use it. Notice also that we need to do some error handling to check (once again) if something has happened that requires that we recreate our swapchain.
 
 A note on `acquire_future`. The actual data type for this is `SwapchainAcquireFuture` and represents when the graphics hardware will have access to a specified `Image`. We need to keep track of this so that we don't accidentally try to have our graphics hardware run our rendering commands before the `Image` is ready for use. It's these kinds of scheduling issues that often cause headaches when doing concurrent programming. If, in the future, you get errors related to invalid or unavailable swapchain images, the first thing you should double-check is that you're handling the `SwapchainAcquireFuture` correctly.
 
@@ -616,7 +616,7 @@ let command_buffer = cmd_buffer_builder.build().unwrap();
 
 A bit underwhelming, I know, but remember that this lesson is only here to produce a minimal Vulkan application and we're not really doing any *actual* rendering right now. This will get a bit more exciting in the next lesson. Let's look over what we do have anyway to learn the structure of a `CommandBuffer`.
 
-Vulkano provides a nice `AutoCommandBufferBuilder` helper to handle buffer creation. Note the `command_buffer_allocator`, which we created earlier, for communication between the CPU and the given `device`. Also note the second argument, `queue.queue_family_index()`. Remember from earlier that Vulkan has a number of `QueueFamily`s, each one supporting a different type of operations. Right now we only have a single `Queue` and a single `QueueFamily`, a graphics queue that we use to do drawing operations.
+Vulkano provides a nice `AutoCommandBufferBuilder` helper to handle buffer creation. Note the `command_buffer_allocator`, which we created earlier, for communication between the CPU and the given `device`. Also note the second argument, `queue.queue_family_index()`. Remember from earlier that Vulkan has a number of `QueueFamily`s, each one supporting different types of operations. Right now we only have a single `Queue` and a single `QueueFamily`, a graphics queue that we use to do drawing operations.
 
 To start our rendering operation we need to call `.begin_render_pass`. This starts the process we initially declared back when we created our `Renderpass` object. We'll see in more detail what this means for us in the next lesson, but for now just remember that everything we set up in our `Renderpass` and `GraphicsPipeline` will be used here between `.begin_render_pass` and `.end_render_pass`.
 
