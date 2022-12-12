@@ -30,13 +30,13 @@ fn main() {
         &vec3(0.0, 1.0, 0.0),
     ));
 
-    let mut previous_frame_end =
-        Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
-
     let mut sphere = Model::new("data/models/ico_sphere_1.obj").build();
     sphere.translate(vec3(0.0, 0.0, -3.0));
 
     let rotation_start = Instant::now();
+
+    let mut previous_frame_end =
+        Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {

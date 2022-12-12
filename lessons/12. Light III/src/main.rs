@@ -30,9 +30,6 @@ fn main() {
         &vec3(0.0, 1.0, 0.0),
     ));
 
-    let mut previous_frame_end =
-        Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
-
     let mut cube1 = Model::new("data/models/cube.obj")
         .specular(0.5, 12.0)
         .build();
@@ -44,6 +41,9 @@ fn main() {
     cube2.translate(vec3(-1.1, 0.0, -4.0));
 
     let rotation_start = Instant::now();
+
+    let mut previous_frame_end =
+        Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
