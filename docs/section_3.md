@@ -38,7 +38,7 @@ I am *at best* woefully underqualified to explain math to anyone. So I encourage
 We'll be adding a new dependency to our Cargo file for this lesson. Open it up and copy in the following code under the `[Dependencies]` header:
 
 ```toml
-nalgebra-glm = "0.16.0"
+nalgebra-glm = "0.17.0"
 ```
 
 #### Create our MVP data structure
@@ -50,7 +50,7 @@ We will create a new type of struct to hold our MVP data for reasons that will b
 struct MVP {
     model: TMat4<f32>,
     view: TMat4<f32>,
-    projection: TMat4<f32>
+    projection: TMat4<f32>,
 }
 
 impl MVP {
@@ -58,7 +58,7 @@ impl MVP {
         MVP {
             model: identity(),
             view: identity(),
-            projection: identity()
+            projection: identity(),
         }
     }
 }
@@ -80,26 +80,27 @@ We only need to update our vertex shader for this lesson.
 
 ```rust
 mod vs {
-    vulkano_shaders::shader!{
-    ty: "vertex",
-    src: "
-#version 450
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec3 color;
+    vulkano_shaders::shader! {
+        ty: "vertex",
+        src: "
+            #version 450
+            layout(location = 0) in vec3 position;
+            layout(location = 1) in vec3 color;
 
-layout(location = 0) out vec3 out_color;
+            layout(location = 0) out vec3 out_color;
 
-layout(set = 0, binding = 0) uniform MVP_Data {
-    mat4 world;
-    mat4 view;
-    mat4 projection;
-} uniforms;
+            layout(set = 0, binding = 0) uniform MVP_Data {
+                mat4 model;
+                mat4 view;
+                mat4 projection;
+            } uniforms;
 
-void main() {
-    mat4 worldview = uniforms.view * uniforms.world;
-    gl_Position = uniforms.projection * worldview * vec4(position, 1.0);
-    out_color = color;
-}"
+            void main() {
+                mat4 worldview = uniforms.view * uniforms.model;
+                gl_Position = uniforms.projection * worldview * vec4(position, 1.0);
+                out_color = color;
+            }
+        "
     }
 }
 ```
@@ -128,27 +129,27 @@ gl_Position = mvp_matrix * vec4(position, 1.0);
 
 The reason we don't do this is because later lessons will have a use for the `worldview` matrix without the projection data.
 
-
 #### Uniform Buffer
 
 Just like we did with our vertex data, the first thing we need to do inside our program is to create a buffer to hold the data in a place our graphics hardware can see it. The code for this is pretty simple and should be placed after we declare our shaders.
 
 ```rust
-let uniform_buffer = CpuBufferPool::<vs::ty::MVP_Data>::uniform_buffer(device.clone());
+let uniform_buffer: CpuBufferPool<vs::ty::MVP_Data> =
+    CpuBufferPool::uniform_buffer(memory_allocator.clone());
 ```
 
 A buffer pool is, in effect, a ring buffer containing "sub buffers" that we can use as our data buffers. This is useful for data that needs to be updated often, such as once a frame in a video game.
 
-The `uniform_buffer()` is a helper method that produces a `CpuBufferPool` configured specifically for holding uniform data. We could just as easily write `CpuBufferPool::<vs::ty::MVP_Data>::new(device.clone(), BufferUsage::all());` to get a generic `CpuBufferPool` suitable for most applications.
+The `uniform_buffer()` is a helper method that produces a `CpuBufferPool` configured specifically for holding uniform data. We could just as easily write `CpuBufferPool::<vs::ty::MVP_Data>::new(memory_allocator.clone(), BufferUsage::all());` to get a generic `CpuBufferPool` suitable for most applications.
 
 Important note: `<vs::ty::MVP_Data>` is not just random gibberish. It **must** be the same name as the struct or variable holding the uniform data in the shader. This might be obvious to you, but it caused me a lot of frustration before I realized what was going on and it's not very well documented elsewhere. So just keep it in mind. That's why I named the struct something distinctive like `MVP_Data` instead of just the generic `Data` that it's named in the examples in the main Vulkano GitHub repository.
 
 #### Using our sub-buffer
 
-In the section above we create a `BufferPool` but that means we need to request and fill a buffer from that pool each time we want to use it. The following code can be added right after we recreate the swapchain in our main program loop.
+In the section above we create a `CpuBufferPool` but that means we need to request and fill a buffer from that pool each time we want to use it. The following code can be added right after we recreate the swapchain in our main program loop.
 
 ```rust
-let uniform_buffer_subbuffer = {
+let uniform_subbuffer = {
     let mvp = MVP::new();
     let uniform_data = vs::ty::MVP_Data {
         model: mvp.model.into(),
@@ -156,7 +157,7 @@ let uniform_buffer_subbuffer = {
         projection: mvp.projection.into(),
     };
 
-    uniform_buffer.next(uniform_data).unwrap()
+    uniform_buffer.from_data(uniform_data).unwrap()
 };
 ```
 
@@ -164,13 +165,22 @@ Right now we aren't doing anything special with our actual MVP data. Instead, we
 
 #### Descriptor Sets
 
-When we created our new shaders we had a section of code that looked like `set = 0, binding = 0`. This refers to a `DescriptorSet` and is what we'll declare next. Place the following code right after our `uniform_buffer_subbuffer` declaration.
+When we created our new shaders we had a section of code that looked like `set = 0, binding = 0`. This refers to a `DescriptorSet` and is what we'll declare next.
+
+First we must create an allocator for the descriptor sets.  Add the following right after creating our `memory_allocator`.
 
 ```rust
-let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+```
+
+Then place the following code right after our `uniform_subbuffer` declaration, before setting up the commands for each frame.
+
+```rust
+let layout = pipeline.layout().set_layouts().get(0).unwrap();
 let set = PersistentDescriptorSet::new(
+    &descriptor_set_allocator,
     layout.clone(),
-    [WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer)],
+    [WriteDescriptorSet::buffer(0, uniform_subbuffer)],
 )
 .unwrap();
 ```
@@ -199,47 +209,49 @@ We'll pause here to show what the code would look like if we wanted to have two 
 ```rust
 mod vs {
     vulkano_shaders::shader!{
-    ty: "vertex",
-    src: "
-#version 450
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec3 color;
+        ty: "vertex",
+        src: "
+            #version 450
+            layout(location = 0) in vec3 position;
+            layout(location = 1) in vec3 color;
 
-layout(location = 0) out vec3 out_color;
+            layout(location = 0) out vec3 out_color;
 
-layout(set = 0, binding = 0) uniform MVP_Data {
-    mat4 world;
-    mat4 view;
-    mat4 projection;
-} uniforms;
+            layout(set = 0, binding = 0) uniform MVP_Data {
+                mat4 world;
+                mat4 view;
+                mat4 projection;
+            } uniforms;
 
-layout(set = 0, binding = 1) uniform extra_data_idk {
-    mat4 extra_data;
-};
+            layout(set = 0, binding = 1) uniform extra_data_idk {
+                mat4 extra_data;
+            };
 
-void main() {
-    // do something with extra_data_idk.extra_data
-    mat4 worldview = uniforms.view * uniforms.world;
-    gl_Position = uniforms.projection * worldview * vec4(position, 1.0);
-    out_color = color;
-}"
+            void main() {
+                // do something with extra_data_idk.extra_data
+                mat4 worldview = uniforms.view * uniforms.world;
+                gl_Position = uniforms.projection * worldview * vec4(position, 1.0);
+                out_color = color;
+            }
+        "
     }
 }
 ```
 
 ```rust
-let second_uniform_buffer = CpuBufferPool::<vs::ty::extra_data_idk>::uniform_buffer(device.clone());
+let second_uniform_buffer: CpuBufferPool<vs::ty::extra_data_idk> =
+    CpuBufferPool::uniform_buffer(memory_allocator.clone());
 ```
 
 ```rust
-let second_uniform_subbuffer = Arc::new({
+let second_uniform_subbuffer = {
     let m:TMat4<f32> = identity();
     let uniform_data = vs::ty::extra_data_idk {
         extra_data: m.into(),
     };
 
-    second_uniform_buffer.next(uniform_data).unwrap()
-});
+    second_uniform_buffer.from_data(uniform_data).unwrap()
+};
 ```
 
 ```rust
@@ -247,7 +259,7 @@ let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
 let set = PersistentDescriptorSet::new(
     layout.clone(),
     [
-        WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer),
+        WriteDescriptorSet::buffer(0, uniform_subbuffer),
         WriteDescriptorSet::buffer(1, second_uniform_subbuffer),
     ],
 )
@@ -284,18 +296,25 @@ This will add the necessary traits to our shader objects. On a side note, this i
 
 With that new addition we can run the code and, if everything goes well, the same screen we had at the end of the last lesson will show up. With one exception nothing's changed because we're still using the identity matrices for our uniform input. Let's start changing that now.
 
-There is one difference that is probably immediately apparent to you, our triangle is upside-down now! We'll fix this in a little bit once we start setting our proper MVP matrices.
-
 #### Projection
 
 Let's start with the easiest, yet most boring matrix, the projection matrix. First we need to update our source data though.
 
 ```rust
-let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, [
-    Vertex { position: [-0.5, 0.5, -0.5], color: [1.0, 0.0, 0.0] },
-    Vertex { position: [0.5, 0.5, -0.5], color: [0.0, 1.0, 0.0] },
-    Vertex { position: [0.0, -0.5, -0.5], color: [0.0, 0.0, 1.0] }
-].iter().cloned()).unwrap();
+let vertices = [
+    Vertex {
+        position: [-0.5, 0.5, -1.0],
+        color: [1.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [0.5, 0.5, -1.0],
+        color: [0.0, 1.0, 0.0],
+    },
+    Vertex {
+        position: [0.0, -0.5, -1.0],
+        color: [0.0, 0.0, 1.0],
+    },
+];
 ```
 
 Doing this moves our triangle away from the viewer "deeper" into the screen. This is important because once we start adding our MVP matrices we can no longer see something located at the same place as the camera.
@@ -303,17 +322,22 @@ Doing this moves our triangle away from the viewer "deeper" into the screen. Thi
 Once you've done that, update the sub-buffer creation screen to look like this. Don't worry that it looks hacky, we'll clean it up in the end.
 
 ```rust
-let uniform_buffer_subbuffer = {
-    let mvp = MVP::new();
-    let dimensions: [u32; 2] = surface.window().inner_size().into();
-    let projection: TMat4<f32> = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.01, 100.0);
+let uniform_subbuffer = {
+    let mut mvp = MVP::new();
+
+    let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+    let image_extent: [u32; 2] = window.inner_size().into();
+
+    let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
+    mvp.projection = perspective(aspect_ratio, half_pi(), 0.01, 100.0);
+
     let uniform_data = vs::ty::MVP_Data {
         model: mvp.model.into(),
         view: mvp.view.into(),
-        projection: projection.into(),
+        projection: mvp.projection.into(),
     };
 
-    uniform_buffer.next(uniform_data).unwrap()
+    uniform_buffer.from_data(uniform_data).unwrap()
 };
 ```
 
@@ -323,29 +347,32 @@ This sets the aspect ratio to be the same as our screen as sets the viewable are
 
 #### View Matrix
 
-We'll take advantage of a method called `look_at()` to set our view matrix. It takes three vectors, the first representing the location of the eye (our view port), the second representing the direction we're looking, and the their representing which direction is "up" for us. In practice this is pretty simple and you can see this by updating the sub-buffer code as follows.
+We'll take advantage of a method called `look_at()` to set our view matrix. It takes three vectors, the first representing the location of the eye (our view port), the second representing the point to look at, and a vector representing which direction is "up" for the camera, in world coordinates. Typically, this is `vec3(0.0, 1.0, 0.0)`.  In practice this is pretty simple and you can see this by updating the sub-buffer code as follows.
 
 ```rust
-let uniform_buffer_subbuffer = {
-    let mvp = MVP::new();
-    let dimensions: [u32; 2] = surface.window().inner_size().into();
-    let projection: TMat4<f32> = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.0, -100.0);
-    let view: TMat4<f32> = look_at(&vec3(0.0, 0.0, 0.01), &vec3(0.0, 0.0, 0.0), &vec3(0.0, -1.0, 0.0));
+let uniform_subbuffer = {
+    let mut mvp = MVP::new();
+
+    let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+    let image_extent: [u32; 2] = window.inner_size().into();
+
+    let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
+    mvp.projection = perspective(aspect_ratio, half_pi(), 0.01, 100.0);
+    mvp.view = look_at(&vec3(0.0, 0.0, 0.01), &vec3(0.0, 0.0, 0.0), &vec3(0.0, 1.0, 0.0));
+
     let uniform_data = vs::ty::MVP_Data {
         model: mvp.model.into(),
-        view: view.into(),
-        projection: projection.into(),
+        view: mvp.view.into(),
+        projection: mvp.projection.into(),
     };
 
-    uniform_buffer.next(uniform_data).unwrap()
+    uniform_buffer.from_data(uniform_data).unwrap()
 };
 ```
 
 Run the code and you should see the following image.
 
-![a triangle oriented the right way up after adding our view matrix](./imgs/3/view_triangle.png)
-
-As you can see, our triangle is now the right way round again. This is because the matrix produced by the `look_at` method will orient the scene along the up vector, which is what we're seeing here.
+![a triangle up after adding our view matrix](./imgs/3/view_triangle.png)
 
 #### Vulkan Coordinate System
 
@@ -368,19 +395,24 @@ Now that we understand what the coordinate directions in Vulkan look like, it's 
 The model matrix holds all the transformations we want to do to a particular model. Let's look at a model matrix that translates (moves) our triangle up and to the right.
 
 ```rust
-let uniform_buffer_subbuffer = {
-    let mvp = MVP::new();
-    let dimensions: [u32; 2] = surface.window().inner_size().into();
-    let projection: TMat4<f32> = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.0, -100.0);
-    let view: TMat4<f32> = look_at(&vec3(0.0, 0.0, 0.01), &vec3(0.0, 0.0, 0.0), &vec3(0.0, -1.0, 0.0));
-    let model: TMat4<f32> = translate(&identity(), &vec3(1.0, -1.0, 0.0));
+let uniform_subbuffer = {
+    let mut mvp = MVP::new();
+
+    let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+    let image_extent: [u32; 2] = window.inner_size().into();
+
+    let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
+    mvp.projection = perspective(aspect_ratio, half_pi(), 0.01, 100.0);
+    mvp.view = look_at(&vec3(0.0, 0.0, 0.01), &vec3(0.0, 0.0, 0.0), &vec3(0.0, 1.0, 0.0));
+    mvp.model = translate(&identity(), &vec3(1.0, -1.0, 0.0));
+
     let uniform_data = vs::ty::MVP_Data {
-        model: model.into(),
-        view: view.into(),
-        projection: projection.into(),
+        model: mvp.model.into(),
+        view: mvp.view.into(),
+        projection: mvp.projection.into(),
     };
 
-    uniform_buffer.next(uniform_data).unwrap()
+    uniform_buffer.from_data(uniform_data).unwrap()
 };
 ```
 
@@ -402,48 +434,63 @@ let mut mvp = MVP::new();
 The view matrix will never change in our code, so we can add the following line right after we declare `mvp`.
 
 ```rust
-mvp.view = look_at(&vec3(0.0, 0.0, 0.01), &vec3(0.0, 0.0, 0.0), &vec3(0.0, -1.0, 0.0));
+mvp.view = look_at(
+    &vec3(0.0, 0.0, 0.1),
+    &vec3(0.0, 0.0, 0.0),
+    &vec3(0.0, 1.0, 0.0),
+);
 ```
 
 Now let's deal with the projection matrix. There are two places where we find the screen size, let's add the following code to both:
 
 ```rust
-let dimensions: [u32; 2] = surface.window().inner_size().into();
-mvp.projection = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.01, 100.0);
+let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+let image_extent: [u32; 2] = window.inner_size().into();
 
+let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
+mvp.projection = perspective(aspect_ratio, half_pi(), 0.01, 100.0);
 ```
 
 For our model matrix let's first start by recreating the initial scene and moving on from there. First, return the model vertex data to the way it was before, with each vertex being at `0.0` on the z-axis
 
 ```rust
-let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false [
-    Vertex { position: [-0.5, 0.5, 0.0], color: [1.0, 0.0, 0.0] },
-    Vertex { position: [0.5, 0.5, 0.0], color: [0.0, 1.0, 0.0] },
-    Vertex { position: [0.0, -0.5, 0.0], color: [0.0, 0.0, 1.0] }
-].iter().cloned()).unwrap();
+let vertices = [
+    Vertex {
+        position: [-0.5, 0.5, 0.0],
+        color: [1.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [0.5, 0.5, 0.0],
+        color: [0.0, 1.0, 0.0],
+    },
+    Vertex {
+        position: [0.0, -0.5, 0.0],
+        color: [0.0, 0.0, 1.0],
+    },
+];
 ```
 
 Now lets create an initial model matrix that performs a z-axis translation to move the triangle back where we can see it. You can add the following line right after we declared our view matrix.
 
 ```rust
-mvp.model = translate(&identity(), &vec3(0.0, 0.0, -0.5));
+mvp.model = translate(&identity(), &vec3(0.0, 0.0, -1.0));
 ```
 
 Lastly, we can simplify our sub-buffer creation code to use our new global `mvp` variable.
 
 ```rust
-let uniform_buffer_subbuffer = {
+let uniform_subbuffer = {
     let uniform_data = vs::ty::MVP_Data {
         model: mvp.model.into(),
         view: mvp.view.into(),
         projection: mvp.projection.into(),
     };
 
-    uniform_buffer.next(uniform_data).unwrap()
+    uniform_buffer.from_data(uniform_data).unwrap()
 };
 ```
 
-Run the code and you should see a triangle identical to the last one, just centered on the screen instead of moved up and to the right.
+Run the code and you should see a triangle similar to the last one, just centered on the screen instead of moved up and to the right.
 
 ![a triangle demonstrating that our updated mvp system is working](./imgs/3/updated_triangle.png)
 
@@ -458,10 +505,15 @@ let rotation_start = Instant::now();
 now update our sub-buffer creation screen
 
 ```rust
-let uniform_buffer_subbuffer = {
-    let elapsed = rotation_start.elapsed().as_secs() as f64 + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
+let uniform_subbuffer = {
+    let elapsed = rotation_start.elapsed().as_secs() as f64
+        + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
     let elapsed_as_radians = elapsed * pi::<f64>() / 180.0 * 30.0;
-    let model = rotate_normalized_axis(&mvp.model, elapsed_as_radians as f32, &vec3(0.0, 0.0, 1.0));
+    let model = rotate_normalized_axis(
+        &mvp.model,
+        elapsed_as_radians as f32,
+        &vec3(0.0, 0.0, 1.0),
+    );
 
     let uniform_data = vs::ty::MVP_Data {
         model: model.into(),
@@ -469,7 +521,7 @@ let uniform_buffer_subbuffer = {
         projection: mvp.projection.into(),
     };
 
-    uniform_buffer.next(uniform_data).unwrap()
+    uniform_buffer.from_data(uniform_data).unwrap()
 };
 ```
 
