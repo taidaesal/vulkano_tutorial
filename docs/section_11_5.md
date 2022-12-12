@@ -181,14 +181,12 @@ We'll want to update `Model` so that it can provide a `ColoredVertex`.
 ```rust
 impl Model {
     pub fn color_data(&self) -> Vec<ColoredVertex> {
-        let mut ret:Vec<ColoredVertex> = Vec::new();
+        let mut ret: Vec<ColoredVertex> = Vec::new();
         for v in &self.data {
-            ret.push(
-                ColoredVertex {
-                    position: v.position,
-                    color: v.color
-                }
-            );
+            ret.push(ColoredVertex {
+                position: v.position,
+                color: v.color,
+            });
         }
         ret
     }
@@ -219,14 +217,14 @@ impl System {
         match self.render_stage {
             RenderStage::Directional => {
                 self.render_stage = RenderStage::LightObject;
-            },
-            RenderStage::LightObject => {},
+            }
+            RenderStage::LightObject => {}
             RenderStage::NeedsRedraw => {
                 self.recreate_swapchain();
                 self.render_stage = RenderStage::Stopped;
                 self.commands = None;
                 return;
-            },
+            }
             _ => {
                 self.render_stage = RenderStage::Stopped;
                 self.commands = None;
@@ -234,10 +232,13 @@ impl System {
             }
         }
 
-        let mut model = Model::new("data/models/sphere.obj").color(directional_light.color).uniform_scale_factor(0.2).build();
+        let mut model = Model::new("data/models/sphere.obj")
+            .color(directional_light.color)
+            .build();
+
         model.translate(directional_light.get_position());
 
-        let model_uniform_subbuffer = {
+        let model_subbuffer = {
             let (model_mat, normal_mat) = model.model_matrices();
 
             let uniform_data = deferred_vert::ty::Model_Data {
@@ -245,48 +246,53 @@ impl System {
                 normals: normal_mat.into(),
             };
 
-            self.model_uniform_buffer.next(uniform_data).unwrap()
+            self.model_uniform_buffer.from_data(uniform_data).unwrap()
         };
 
-        let deferred_layout = self
+        let model_layout = self
             .light_obj_pipeline
             .layout()
-            .descriptor_set_layouts()
+            .set_layouts()
             .get(1)
             .unwrap();
         let model_set = PersistentDescriptorSet::new(
-            deferred_layout.clone(),
-            [
-                WriteDescriptorSet::buffer(0, model_uniform_subbuffer.clone()),
-            ],
+            &self.descriptor_set_allocator,
+            model_layout.clone(),
+            [WriteDescriptorSet::buffer(0, model_subbuffer.clone())],
         )
         .unwrap();
 
         let vertex_buffer = CpuAccessibleBuffer::from_iter(
-            self.device.clone(),
-            BufferUsage::all(),
+            &self.memory_allocator,
+            BufferUsage {
+                vertex_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
-            model.color_data().iter().cloned()).unwrap();
-
-        let mut commands = self.commands.take().unwrap();
-        commands
-        .bind_pipeline_graphics(self.light_obj_pipeline.clone())
-        .bind_descriptor_sets(
-            PipelineBindPoint::Graphics,
-            self.light_obj_pipeline.layout().clone(),
-            0,
-            (self.vp_set.clone(), model_set.clone()),
+            model.color_data().iter().cloned(),
         )
-        .bind_vertex_buffers(0, vertex_buffer.clone())
-        .draw(vertex_buffer.len() as u32, 1, 0, 0)
         .unwrap();
-        self.commands = Some(commands);
-    }}
+
+        self.commands
+            .as_mut()
+            .unwrap()
+            .bind_pipeline_graphics(self.light_obj_pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.light_obj_pipeline.layout().clone(),
+                0,
+                (self.vp_set.clone(), model_set.clone()),
+            )
+            .bind_vertex_buffers(0, vertex_buffer.clone())
+            .draw(vertex_buffer.len() as u32, 1, 0, 0)
+            .unwrap();
+    }
+}
 ```
 
 Firstly, you might notice that we're loading a new `Model` each time we call this method. While it would be more efficient to load this model a single time and just use it for every call, that adds more complexity to something that, in the end, is just for the convenience for us as developers. Even complex scenes will likely have a couple dozen light sources *at most* and so the performance impact of this inefficiency is trivial. Anything which requires rendering more than that will likely require more power than this little toy rendering system will ever be capable of delivering. As always, feel free to modify your own code however you wish to meet your own requirements.
 
-On the subject of me being kind of lazy, take a look at our declaration of `model_uniform_subbuffer`. We take a buffer type intended to be used with one shader and force it to be used on a different shader. Notice in particular that we're declaring data in the format `deferred_vert::ty::Model_Data` instead of the correct `light_obj_vert::ty::Model_Data` type that's actually present in our shader. This is unsafe because our compiler will not save us if we make a mistake here. However, the Vulkan drivers *will* accept it because both data types have the same signature. This is also why we left the `mat4 normals` field in our `light_obj.vert` uniform despite not using it anywhere, to make this hack possible.
+On the subject of me being kind of lazy, take a look at our declaration of `model_subbuffer`. We take a buffer type intended to be used with one shader and force it to be used on a different shader. Notice in particular that we're declaring data in the format `deferred_vert::ty::Model_Data` instead of the correct `light_obj_vert::ty::Model_Data` type that's actually present in our shader. This is unsafe because our compiler will not save us if we make a mistake here. However, the Vulkan drivers *will* accept it because both data types have the same signature. This is also why we left the `mat4 normals` field in our `light_obj.vert` uniform despite not using it anywhere, to make this hack possible.
 
 If you wish, it would be a good exercise to fix both of these flaws with my implementation, but for now this tutorial will continue with it as it is.
 
@@ -300,35 +306,47 @@ fn main() {
     let event_loop = EventLoop::new();
     let mut system = System::new(&event_loop);
 
-    system.set_view(&look_at(&vec3(0.0, 0.0, 0.01), &vec3(0.0, 0.0, 0.0), &vec3(0.0, -1.0, 0.0)));
-
-    let mut previous_frame_end = Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
+    system.set_view(&look_at(
+        &vec3(0.0, 0.0, 0.1),
+        &vec3(0.0, 0.0, 0.0),
+        &vec3(0.0, 1.0, 0.0),
+    ));
 
     let mut teapot = Model::new("data/models/teapot.obj").build();
     teapot.translate(vec3(0.0, 2.0, -5.0));
 
-    let directional_light = DirectionalLight::new([-4.0, -4.0, -3.5], [1.0, 1.0, 1.0]);
+    let directional_light = DirectionalLight::new([-4.0, -4.0, -3.5, 1.0], [1.0, 1.0, 1.0]);
 
-    event_loop.run(move |event, _, control_flow| {
-        match event {
-            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
-                *control_flow = ControlFlow::Exit;
-            },
-            Event::WindowEvent { event: WindowEvent::Resized(_), .. } => {
-                system.recreate_swapchain();
-            },
-            Event::RedrawEventsCleared => {
-                previous_frame_end.as_mut().take().unwrap().cleanup_finished();
+    let mut previous_frame_end = Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
 
-                system.start();
-                system.geometry(&mut teapot);
-                system.ambient();
-                system.directional(&directional_light);
-                system.light_object(&directional_light);
-                system.finish(&mut previous_frame_end);
-            },
-            _ => ()
+    event_loop.run(move |event, _, control_flow| match event {
+        Event::WindowEvent {
+            event: WindowEvent::CloseRequested,
+            ..
+        } => {
+            *control_flow = ControlFlow::Exit;
         }
+        Event::WindowEvent {
+            event: WindowEvent::Resized(_),
+            ..
+        } => {
+            system.recreate_swapchain();
+        }
+        Event::RedrawEventsCleared => {
+            previous_frame_end
+                .as_mut()
+                .take()
+                .unwrap()
+                .cleanup_finished();
+
+            system.start();
+            system.geometry(&mut teapot);
+            system.ambient();
+            system.directional(&directional_light);
+            system.light_object(&directional_light);
+            system.finish(&mut previous_frame_end);
+        }
+        _ => (),
     });
 }
 ```
@@ -384,7 +402,10 @@ impl Model {
     pub fn model_matrices(&mut self) -> (TMat4<f32>, TMat4<f32>) {
         if self.requires_update {
             self.model = self.translation * self.rotation;
-            self.model = scale(&self.model, &vec3(self.uniform_scale, self.uniform_scale, self.uniform_scale));
+            self.model = scale(
+                &self.model,
+                &vec3(self.uniform_scale, self.uniform_scale, self.uniform_scale),
+            );
             self.normals = inverse_transpose(self.model);
             self.requires_update = false;
         }
@@ -404,7 +425,10 @@ impl System {
     // ...
     pub fn light_object(&mut self, directional_light: &DirectionalLight) {
         // ...
-        let mut model = Model::new("data/models/sphere.obj").color(directional_light.color).uniform_scale_factor(0.2).build();
+        let mut model = Model::new("data/models/sphere.obj")
+            .color(directional_light.color)
+            .uniform_scale_factor(0.2)
+            .build();
         // ...
     }
     // ...
@@ -432,43 +456,56 @@ fn main() {
     let event_loop = EventLoop::new();
     let mut system = System::new(&event_loop);
 
-    system.set_view(&look_at(&vec3(0.0, 0.0, 0.01), &vec3(0.0, 0.0, 0.0), &vec3(0.0, -1.0, 0.0)));
-
-    let mut previous_frame_end = Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
+    system.set_view(&look_at(
+        &vec3(0.0, 0.0, 0.1),
+        &vec3(0.0, 0.0, 0.0),
+        &vec3(0.0, 1.0, 0.0),
+    ));
 
     let mut sphere = Model::new("./src/models/ico_sphere_1.obj").build();
     sphere.translate(vec3(0.0, 0.0, -3.0));
 
     let rotation_start = Instant::now();
 
-    event_loop.run(move |event, _, control_flow| {
-        match event {
-            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
-                *control_flow = ControlFlow::Exit;
-            },
-            Event::WindowEvent { event: WindowEvent::Resized(_), .. } => {
-                system.recreate_swapchain();
-            },
-            Event::RedrawEventsCleared => {
-                previous_frame_end.as_mut().take().unwrap().cleanup_finished();
+    let mut previous_frame_end = Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
 
-                let elapsed = rotation_start.elapsed().as_secs() as f32 + rotation_start.elapsed().subsec_nanos() as f32 / 1_000_000_000.0;
-                let elapsed_as_radians = elapsed * 30.0 * (pi:: <f32>() / 180.0);
-
-                let x: f32 = 2.0 * elapsed_as_radians.cos();
-                let z: f32 = -3.0 + (2.0 * elapsed_as_radians.sin());
-
-                let directional_light = DirectionalLight::new([x, 0.0, z], [1.0, 1.0, 1.0]);
-
-                system.start();
-                system.geometry(&mut sphere);
-                system.ambient();
-                system.directional(&directional_light);
-                system.light_object(&directional_light);
-                system.finish(&mut previous_frame_end);
-            },
-            _ => ()
+    event_loop.run(move |event, _, control_flow| match event {
+        Event::WindowEvent {
+            event: WindowEvent::CloseRequested,
+            ..
+        } => {
+            *control_flow = ControlFlow::Exit;
         }
+        Event::WindowEvent {
+            event: WindowEvent::Resized(_),
+            ..
+        } => {
+            system.recreate_swapchain();
+        }
+        Event::RedrawEventsCleared => {
+            previous_frame_end
+                .as_mut()
+                .take()
+                .unwrap()
+                .cleanup_finished();
+
+            let elapsed = rotation_start.elapsed().as_secs() as f32
+                + rotation_start.elapsed().subsec_nanos() as f32 / 1_000_000_000.0;
+            let elapsed_as_radians = elapsed * 30.0 * (pi::<f32>() / 180.0);
+
+            let x: f32 = 2.0 * elapsed_as_radians.cos();
+            let z: f32 = -3.0 + (2.0 * elapsed_as_radians.sin());
+
+            let directional_light = DirectionalLight::new([x, 0.0, z, 1.0], [1.0, 1.0, 1.0]);
+
+            system.start();
+            system.geometry(&mut sphere);
+            system.ambient();
+            system.directional(&directional_light);
+            system.light_object(&directional_light);
+            system.finish(&mut previous_frame_end);
+        }
+        _ => (),
     });
 }
 ```
