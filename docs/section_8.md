@@ -196,17 +196,18 @@ mod ambient_frag {
 As part of creating a new ambient shader, we will have to update our ambient buffer pool and sub-buffer creation.
 
 ```rust
-let ambient_buffer = CpuBufferPool::<ambient_frag::ty::Ambient_Data>::uniform_buffer(device.clone());
+let ambient_buffer: CpuBufferPool<ambient_frag::ty::Ambient_Data> =
+    CpuBufferPool::uniform_buffer(memory_allocator.clone());
 ```
 
 ```rust
-let ambient_uniform_subbuffer = {
+let ambient_subbuffer = {
     let uniform_data = ambient_frag::ty::Ambient_Data {
         color: ambient_light.color.into(),
-        intensity: ambient_light.intensity.into()
+        intensity: ambient_light.intensity.into(),
     };
 
-    ambient_buffer.next(uniform_data).unwrap()
+    ambient_buffer.from_data(uniform_data).unwrap()
 };
 ```
 
@@ -221,16 +222,16 @@ let directional_pipeline = GraphicsPipeline::start()
     .input_assembly_state(InputAssemblyState::new())
     .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
     .fragment_shader(directional_frag.entry_point("main").unwrap(), ())
-    .color_blend_state(ColorBlendState::new(lighting_pass.num_color_attachments()).blend(
-        AttachmentBlend {
+    .color_blend_state(
+        ColorBlendState::new(lighting_pass.num_color_attachments()).blend(AttachmentBlend {
             color_op: BlendOp::Add,
             color_source: BlendFactor::One,
             color_destination: BlendFactor::One,
             alpha_op: BlendOp::Max,
             alpha_source: BlendFactor::One,
             alpha_destination: BlendFactor::One,
-        },
-    ))
+        }),
+    )
     .depth_stencil_state(DepthStencilState::simple_depth_test())
     .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
     .render_pass(lighting_pass.clone())
@@ -268,58 +269,60 @@ This uses the same blending options from our directional pipeline for the same r
 
 updated pool declaration
 ```rust
-let uniform_buffer = CpuBufferPool::<deferred_vert::ty::MVP_Data>::uniform_buffer(device.clone());
-let ambient_buffer = CpuBufferPool::<ambient_frag::ty::Ambient_Data>::uniform_buffer(device.clone());
-let directional_buffer = CpuBufferPool::<directional_frag::ty::Directional_Light_Data>::uniform_buffer(device.clone());
+let uniform_buffer: CpuBufferPool<deferred_vert::ty::MVP_Data> =
+    CpuBufferPool::uniform_buffer(memory_allocator.clone());
+let ambient_buffer: CpuBufferPool<ambient_frag::ty::Ambient_Data> =
+    CpuBufferPool::uniform_buffer(memory_allocator.clone());
+let directional_buffer: CpuBufferPool<directional_frag::ty::Directional_Light_Data> =
+    CpuBufferPool::uniform_buffer(memory_allocator.clone());
 ```
 
 #### Updated Descriptor Sets
 
 ```rust
-let deferred_layout = deferred_pipeline
-    .layout()
-    .descriptor_set_layouts()
-    .get(0)
-    .unwrap();
+let deferred_layout = deferred_pipeline.layout().set_layouts().get(0).unwrap();
 let deferred_set = PersistentDescriptorSet::new(
+    &descriptor_set_allocator,
     deferred_layout.clone(),
-    [WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer.clone())],
+    [WriteDescriptorSet::buffer(0, uniform_subbuffer.clone())],
 )
 .unwrap();
 
-let ambient_layout = ambient_pipeline
-    .layout()
-    .descriptor_set_layouts()
-    .get(0)
-    .unwrap();
+let ambient_layout = ambient_pipeline.layout().set_layouts().get(0).unwrap();
 let ambient_set = PersistentDescriptorSet::new(
+    &descriptor_set_allocator,
     ambient_layout.clone(),
     [
-        WriteDescriptorSet::image_view(0, color_buffer.clone()), 
-        WriteDescriptorSet::buffer(1, uniform_buffer_subbuffer.clone()),
-        WriteDescriptorSet::buffer(2, ambient_uniform_subbuffer.clone())
+        WriteDescriptorSet::image_view(0, color_buffer.clone()),
+        WriteDescriptorSet::buffer(1, uniform_subbuffer.clone()),
+        WriteDescriptorSet::buffer(2, ambient_subbuffer.clone()),
     ],
 )
 .unwrap();
 ```
 Our sets have been updated as well. We no longer need to provide the ambient sub-buffer to `directional_set`. Instead, we create a third descriptor set to store the inputs we need for our ambient shaders.
 
-Side Note: Earlier versions of this tutorial had the ambient shaders taking in the normals buffer as input despite not actually using it. This passed without issue in earlier versions of the Vulkano api but as of version 0.28.0 only bindings that are actually used will be generated. This leads to an `InvalidBinding` error. So if you see the same error make sure that you're actually using all your inputs. 
+Side Note: Earlier versions of this tutorial had the ambient shaders taking in the normals buffer as input despite not actually using it. This passed without issue in earlier versions of the Vulkano API, but as of version 0.28.0 only bindings that are actually used will be generated. This leads to an `InvalidBinding` error. So if you see the same error make sure that you're actually using all your inputs. 
 
 #### Updated Render Call
 
 ```rust
-let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-    device.clone(),
-    queue.family(),
+let mut commands = AutoCommandBufferBuilder::primary(
+    &command_buffer_allocator,
+    queue.queue_family_index(),
     CommandBufferUsage::OneTimeSubmit,
 )
 .unwrap();
-let command_buffer = command_buffer_builder
+
+commands
     .begin_render_pass(
-        framebuffers[image_num].clone(),
+        RenderPassBeginInfo {
+            clear_values,
+            ..RenderPassBeginInfo::framebuffer(
+                framebuffers[image_index as usize].clone(),
+            )
+        },
         SubpassContents::Inline,
-        clear_values,
     )
     .unwrap()
     .set_viewport(0, [viewport.clone()])
@@ -356,8 +359,9 @@ let command_buffer = command_buffer_builder
     .draw(vertex_buffer.len() as u32, 1, 0, 0)
     .unwrap()
     .end_render_pass()
-    .unwrap()
-    .build().unwrap();
+    .unwrap();
+
+let command_buffer = commands.build().unwrap();
 ```
 
 The only change here is that we've added a second `.draw()` command for our ambient shaders. Notice that, since there isn't a `.next_subpass()` call between our directional draw command and our ambient draw command, they will both execute on the same sub-pass, which is exactly what we want.
@@ -378,20 +382,15 @@ We'll need to create directional uniform sub-buffers several times so let's crea
 
 ```rust
 fn generate_directional_buffer(
-    pool: &vulkano::buffer::cpu_pool::CpuBufferPool<directional_frag::ty::Directional_Light_Data>,
+    pool: &CpuBufferPool<directional_frag::ty::Directional_Light_Data>,
     light: &DirectionalLight,
-) -> Arc<
-    vulkano::buffer::cpu_pool::CpuBufferPoolSubbuffer<
-        directional_frag::ty::Directional_Light_Data,
-        Arc<StdMemoryPool>,
-    >,
-> {
+) -> Arc<CpuBufferPoolSubbuffer<directional_frag::ty::Directional_Light_Data>> {
     let uniform_data = directional_frag::ty::Directional_Light_Data {
         position: light.position.into(),
         color: light.color.into(),
     };
 
-    pool.next(uniform_data).unwrap()
+    pool.from_data(uniform_data).unwrap()
 }
 ```
 
@@ -402,28 +401,42 @@ For the most part this just moves the sub-buffer logic that used to exist in our
 Let's create our new light sources. Remember we're making three such sources and positioning them around our cube.
 
 ```rust
-let directional_light_r = DirectionalLight {position: [-4.0, 0.0, -2.0, 1.0], color: [1.0, 0.0, 0.0]};
-let directional_light_g = DirectionalLight {position: [0.0, -4.0, 1.0, 1.0], color: [0.0, 1.0, 0.0]};
-let directional_light_b = DirectionalLight {position: [4.0, -2.0, -1.0, 1.0], color: [0.0, 0.0, 1.0]};
+let directional_light_r = DirectionalLight {
+    position: [-4.0, 0.0, -4.0, 1.0],
+    color: [1.0, 0.0, 0.0],
+};
+let directional_light_g = DirectionalLight {
+    position: [0.0, -4.0, 1.0, 1.0],
+    color: [0.0, 1.0, 0.0],
+};
+let directional_light_b = DirectionalLight {
+    position: [4.0, -2.0, 1.0, 1.0],
+    color: [0.0, 0.0, 1.0],
+};
 ```
 
 #### Changes to the Rendering System
 
 Now we need to change our rendering system to call our directional shader three times with three different values. The way we do this is fairly simple.
 
-First we change our command buffer declaration.
+We're going to cut up our command buffer declaration into a few separate pieces.
 ```rust
 let mut commands = AutoCommandBufferBuilder::primary(
-    device.clone(),
-    queue.family(),
+    &command_buffer_allocator,
+    queue.queue_family_index(),
     CommandBufferUsage::OneTimeSubmit,
 )
 .unwrap();
+
 commands
     .begin_render_pass(
-        framebuffers[image_num].clone(),
+        RenderPassBeginInfo {
+            clear_values,
+            ..RenderPassBeginInfo::framebuffer(
+                framebuffers[image_index as usize].clone(),
+            )
+        },
         SubpassContents::Inline,
-        clear_values,
     )
     .unwrap()
     .set_viewport(0, [viewport.clone()])
@@ -445,26 +458,25 @@ The type of `commands` is `AutoCommandBufferBuilder` so we can keep chaining ren
 
 Next, we declare our directional data sub-buffer for our first directional input.
 ```rust
-let mut directional_uniform_subbuffer =
+let directional_layout = directional_pipeline.layout().set_layouts().get(0).unwrap();
+
+// directional_light_r
+let mut directional_subbuffer =
     generate_directional_buffer(&directional_buffer, &directional_light_r);
-    
-let directional_layout = directional_pipeline
-    .layout()
-    .descriptor_set_layouts()
-    .get(0)
-    .unwrap();
+
 let directional_set = PersistentDescriptorSet::new(
+    &descriptor_set_allocator,
     directional_layout.clone(),
     [
-        WriteDescriptorSet::image_view(0, color_buffer.clone()), 
+        WriteDescriptorSet::image_view(0, color_buffer.clone()),
         WriteDescriptorSet::image_view(1, normal_buffer.clone()),
-        WriteDescriptorSet::buffer(2, uniform_buffer_subbuffer.clone()),
-        WriteDescriptorSet::buffer(3, directional_uniform_subbuffer.clone())
+        WriteDescriptorSet::buffer(2, uniform_subbuffer.clone()),
+        WriteDescriptorSet::buffer(3, directional_subbuffer.clone()),
     ],
 )
 .unwrap();
 ```
-We use our helper function for the first time here to declare our usual `directional_uniform_subbuffer` variable.
+We use our helper function for the first time here to declare our usual `directional_subbuffer` variable.
 
 Next we append the rendering commands to our command buffer building.
 ```rust
@@ -483,16 +495,18 @@ commands
 
 That will do for the first directional light and now we can just do the same thing for the other two lights.
 ```rust
-directional_uniform_subbuffer =
+// directional_light_g
+directional_subbuffer =
     generate_directional_buffer(&directional_buffer, &directional_light_g);
 
 let directional_set = PersistentDescriptorSet::new(
+    &descriptor_set_allocator,
     directional_layout.clone(),
     [
-        WriteDescriptorSet::image_view(0, color_buffer.clone()), 
+        WriteDescriptorSet::image_view(0, color_buffer.clone()),
         WriteDescriptorSet::image_view(1, normal_buffer.clone()),
-        WriteDescriptorSet::buffer(2, uniform_buffer_subbuffer.clone()),
-        WriteDescriptorSet::buffer(3, directional_uniform_subbuffer.clone())
+        WriteDescriptorSet::buffer(2, uniform_subbuffer.clone()),
+        WriteDescriptorSet::buffer(3, directional_subbuffer.clone()),
     ],
 )
 .unwrap();
@@ -509,15 +523,18 @@ commands
     .draw(vertex_buffer.len() as u32, 1, 0, 0)
     .unwrap();
 
-directional_uniform_subbuffer =
+// directional_light_b
+directional_subbuffer =
     generate_directional_buffer(&directional_buffer, &directional_light_b);
+
 let directional_set = PersistentDescriptorSet::new(
+    &descriptor_set_allocator,
     directional_layout.clone(),
     [
-        WriteDescriptorSet::image_view(0, color_buffer.clone()), 
+        WriteDescriptorSet::image_view(0, color_buffer.clone()),
         WriteDescriptorSet::image_view(1, normal_buffer.clone()),
-        WriteDescriptorSet::buffer(2, uniform_buffer_subbuffer.clone()),
-        WriteDescriptorSet::buffer(3, directional_uniform_subbuffer.clone())
+        WriteDescriptorSet::buffer(2, uniform_subbuffer.clone()),
+        WriteDescriptorSet::buffer(3, directional_subbuffer.clone()),
     ],
 )
 .unwrap();
@@ -537,6 +554,7 @@ commands
 
 Lastly, let's draw our ambient buffer and finish our command buffer.
 ```rust
+// ambient_light
 commands
     .bind_pipeline_graphics(ambient_pipeline.clone())
     .bind_descriptor_sets(
