@@ -83,7 +83,7 @@ Lot to take in here but luckily there isn't much new syntax so we can move throu
 
 First, take note of the new way we're declaring this. Instead of `single_pass_renderpass!` as in the past, we are now using a macro named `ordered_passes_renderpass!`. The difference is about what you might expect, with `single_pass_renderpass!` actually just being a shortcut helper for using `ordered_passes_renderpass!` with only one sub-pass. We could just as easily have been using `ordered_passes_renderpass!` from the beginning. The reason we didn't is because I feel that the helper macro lowers some of the initial complexity a new learner has to deal with until they're ready for the more complicated version. You're ready now, so here we are.
 
-The attachments themselves are declared just like we've seen before. There are a couple of things I want to point out. First, we use different image formats. This is because our intermediary buffers have more limited requirements so we can pick data formats that are more compact than the one used by our final image. For a complete list of format options check the [official documentation](https://docs.rs/vulkano/0.16.0/vulkano/format/enum.Format.html). The second thing about the attachment section is just a reminder to pay attention to the order. I harp on this a lot, but it's a really easy mistake to make.
+The attachments themselves are declared just like we've seen before. There are a couple of things I want to point out. First, we use different image formats. This is because our intermediary buffers have more limited requirements so we can pick data formats that are more compact than the one used by our final image. For a complete list of format options check the [official documentation](https://docs.rs/vulkano/0.32.0/vulkano/format/enum.Format.html). The second thing about the attachment section is just a reminder to pay attention to the order. I harp on this a lot, but it's a really easy mistake to make.
 
 The `passes` section is where most of our fun new options come in so we'll look at each of the two passes in sequence.
 
@@ -105,9 +105,9 @@ This is the first pass and is more or less equivalent to the single sub-pass we'
 }
 ```
 
-Our second sub-pass does something familiar to start with: `color` is back to listing a single attachment as an output source and it will be the one we ask Vulkan to show to the user. We don't have anything to put in `depth_stencil` but that's okay because our earlier shaders did all the work we needed depth tracking for. The real interesting part is what we're doing with `input`. Just like our first pass could use attachments as *outputs* we can use attachments as *inputs*. Our first pass didn't have any buffers as input because it takes the raw data from our program. By the time we reach the second sub-pass, however, we don't need more data from the application. Instead, what we want to do is take the data stored from the first pass and transform it into our final output.
+Our second sub-pass does something familiar to start with: `color` is back to listing a single attachment as an output source and it will be the one we ask Vulkan to show to the user. We don't have anything to put in `depth_stencil` but that's okay because our earlier shaders did all the work we needed depth tracking for. The real interesting part is what we're doing with `input`. Just like our first pass could use attachments as *outputs*, we can also use attachments as *inputs*. Our first pass didn't have any buffers as input because it already takes the raw vertex data and uniforms from our program. By the time we reach the second sub-pass, however, we don't need more data from the application. Instead, what we want to do is take the data stored from the first pass and transform it into our final output.
 
-On the subject of using renderpass attachments it should be noted that not every sub-pass has to consume every possible attachment. If we had a three-pass render system (for example) it's possible that our second pass might only use `color` with `normals` left for the third sub-pass. As you might expect, the ordering is important; however, that order only matters inside our shaders. You do not need to list attachments in `input` in the same order they are listed in an earlier sub-pass' `color` field.
+On the subject of using renderpass attachments it should be noted that not every sub-pass has to consume every possible attachment. If we had a three-pass render system (for example) it's possible that our second pass might only use `color`, with `normals` left for the third sub-pass. As you might expect, the ordering is important; however, that order only matters inside our shaders. You do not need to list attachments in `input` in the same order they are listed in an earlier sub-pass' `color` field.
 
 Lastly, let's store our sub-passes in named variables to help keep the code readable.
 
@@ -124,16 +124,17 @@ We'll add our new attachment near the top of the method
 ```rust
 let color_buffer = ImageView::new(
     AttachmentImage::transient_input_attachment(
-        device.clone(),
+        allocator,
         dimensions,
         Format::A2B10G10R10_UNORM_PACK32,
     )
     .unwrap(),
 )
 .unwrap();
+
 let normal_buffer = ImageView::new(
     AttachmentImage::transient_input_attachment(
-        device.clone(),
+        allocator,
         dimensions,
         Format::R16G16B16A16_SFLOAT,
     )
@@ -143,8 +144,8 @@ let normal_buffer = ImageView::new(
 ```
 
 Two things about this:
- - We need to make sure the `Format` for each attachment is the same
- - We need to use a different helper method. Earlier we were using `transient_attachment` but now we need `transient_input_attachment`. This is, as you've probably guessed, because we need to use these attachment images as input to a sub-pass. If we didn't give `depth_buffer` as an input to the second sub-pass we could have continued using the first method to create it.
+ - We need to make sure the `Format` for each attachment is the same as we declared in the render pass
+ - We need to use a different helper method. Earlier we were using `transient_attachment` but now we need `transient_input_attachment`. This is, as you've probably guessed, because we need to use these attachment images as input to a sub-pass. If we were to provide `depth_buffer` as an input to the second sub-pass, we would also need to use this method to create it.
 
 Now we need to attach our new buffers to the actual `Framebuffer`
 ```rust
@@ -168,8 +169,8 @@ Nothing new here, just mind the order you declare them in. Remember that `image`
 We're almost done, however, there is one thing that we need to handle before leaving this method. Our main code needs to know about `color_buffer` and `normal_buffer` so let's adapt the function to return them.
 ```rust
 fn window_size_dependent_setup(
-    device: Arc<Device>,
-    images: &[Arc<SwapchainImage<Window>>],
+    allocator: &StandardMemoryAllocator,
+    images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> (
@@ -178,62 +179,70 @@ fn window_size_dependent_setup(
     Arc<ImageView<AttachmentImage>>,
 ) {
   // ...
-    (
-        images
-            .iter()
-            .map(|image| {
-                let view = ImageView::new_default(image.clone()).unwrap();
-                Framebuffer::new(
-                    render_pass.clone(),
-                    FramebufferCreateInfo {
-                        attachments: vec![
-                            view,
-                            color_buffer.clone(),
-                            normal_buffer.clone(),
-                            depth_buffer.clone(),
-                        ],
-                        ..Default::default()
-                    },
-                )
-                .unwrap()
-            })
-            .collect::<Vec<_>>(),
-        color_buffer.clone(),
-        normal_buffer.clone(),
-    )
+    let framebuffers = images
+        .iter()
+        .map(|image| {
+            let view = ImageView::new_default(image.clone()).unwrap();
+            Framebuffer::new(
+                render_pass.clone(),
+                FramebufferCreateInfo {
+                    attachments: vec![
+                        view,
+                        color_buffer.clone(),
+                        normal_buffer.clone(),
+                        depth_buffer.clone(),
+                    ],
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
+
+    (framebuffers, color_buffer.clone(), normal_buffer.clone())
 }
 ```
 
 Now we need to update the two places we call this method.
 ```rust
-let (mut framebuffers, mut color_buffer, mut normal_buffer) =
-    window_size_dependent_setup(device.clone(), &images, render_pass.clone(), &mut viewport);
+let (mut framebuffers, mut color_buffer, mut normal_buffer) = window_size_dependent_setup(
+    &memory_allocator,
+    &images,
+    render_pass.clone(),
+    &mut viewport,
+);
 ```
 
 ```rust
 if recreate_swapchain {
-    let dimensions: [u32; 2] = surface.window().inner_size().into();
+    let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+    let image_extent: [u32; 2] = window.inner_size().into();
+
+    let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
+    mvp.projection = perspective(aspect_ratio, half_pi(), 0.01, 100.0);
+
     let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
-        image_extent: surface.window().inner_size().into(),
+        image_extent,
         ..swapchain.create_info()
     }) {
         Ok(r) => r,
-        Err(SwapchainCreationError::UnsupportedDimensions) => return,
-        Err(e) => panic!("Failed to recreate swapchain: {:?}", e)
+        Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
+        Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
     };
-    mvp.projection = perspective(dimensions[0] as f32 / dimensions[1] as f32, 180.0, 0.01, 100.0);
 
-    swapchain = new_swapchain;
     let (new_framebuffers, new_color_buffer, new_normal_buffer) =
         window_size_dependent_setup(
-            device.clone(),
+            &memory_allocator,
             &new_images,
             render_pass.clone(),
             &mut viewport,
         );
+
+    swapchain = new_swapchain;
     framebuffers = new_framebuffers;
     color_buffer = new_color_buffer;
     normal_buffer = new_normal_buffer;
+
     recreate_swapchain = false;
 }
 ```
@@ -326,20 +335,13 @@ Our second pipeline is almost identical to the first. The only real change is th
 
 #### Uniform Sets
 
-First, for the sake of our initial example, let's comment out our `ambient_uniform_subbuffer` and `directional_uniform_subbuffer` variables and only use our main `uniform_buffer_subbuffer`.
+First, for the sake of our initial example, let's comment out our `ambient_subbuffer` and `directional_subbuffer` variables and only use our main `uniform_subbuffer`.
 ```rust
-let deferred_layout = deferred_pipeline
-    .layout()
-    .descriptor_set_layouts()
-    .get(0)
-    .unwrap();
-let mut deferred_set_builder = PersistentDescriptorSet::start(deferred_layout.clone());
+let deferred_layout = deferred_pipeline.layout().set_layouts().get(0).unwrap();
 let deferred_set = PersistentDescriptorSet::new(
+    &descriptor_set_allocator,
     deferred_layout.clone(),
-    [WriteDescriptorSet::buffer(
-        0,
-        uniform_buffer_subbuffer.clone(),
-    )],
+    [WriteDescriptorSet::buffer(0, uniform_subbuffer.clone())],
 )
 .unwrap();
 ```
@@ -347,17 +349,14 @@ Nothing too notable here since we've seen this exact code in earlier lessons. Ho
 
 The second set is also simple but it does show off another important new wrinkle in how Vulkan works.
 ```rust
-let lighting_layout = lighting_pipeline
-    .layout()
-    .descriptor_set_layouts()
-    .get(0)
-    .unwrap();
+let lighting_layout = lighting_pipeline.layout().set_layouts().get(0).unwrap();
 let lighting_set = PersistentDescriptorSet::new(
+    &descriptor_set_allocator,
     lighting_layout.clone(),
     [
         WriteDescriptorSet::image_view(0, color_buffer.clone()),
         WriteDescriptorSet::image_view(1, normal_buffer.clone()),
-        WriteDescriptorSet::buffer(2, uniform_buffer_subbuffer),
+        WriteDescriptorSet::buffer(2, uniform_subbuffer),
     ],
 )
 .unwrap();
@@ -369,16 +368,25 @@ As you can see, renderpass attachments which are used as inputs to a sub-pass ar
 
 Before we can show our new rendering command buffer we need to update our clear color arrays. Remember: *every* attachment needs to have a clear color supplied.
 ```rust
-let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), 1f32.into()];
+let clear_values = vec![
+    Some([0.0, 0.0, 0.0, 1.0].into()),
+    Some([0.0, 0.0, 0.0, 1.0].into()),
+    Some([0.0, 0.0, 0.0, 1.0].into()),
+    Some(1.0.into()),
+];
 ```
 In this case we just use black for our new attachments.
 
 The new set of render commands we want to look at are these:
 ```rust
 .begin_render_pass(
-    framebuffers[image_num].clone(),
+    RenderPassBeginInfo {
+        clear_values,
+        ..RenderPassBeginInfo::framebuffer(
+            framebuffers[image_index as usize].clone(),
+        )
+    },
     SubpassContents::Inline,
-    clear_values,
 )
 .unwrap()
 .set_viewport(0, [viewport.clone()])
@@ -434,7 +442,7 @@ src
 
 You can use whatever file extension you'd like for the shaders. Using `.vert` or `.frag` won't help Vulkan automatically figure out what kind of shader they are so we still need to tell it explicitly when we load them. As far as I know, there's no officially-recommended file extension. The extensions I use are pretty common choices but I've also seen people use `.glsl` as the file extension as well.
 
-For what it's worth, IntelliJ is the IDE I use for Rust development and it associates `.vert` and `.frag` files with GLSL code as long as you have the GLSL language extension plugin installed.
+For what it's worth, IntelliJ is the IDE I use for Rust development, and it associates `.vert` and `.frag` files with GLSL code as long as you have the GLSL language extension plugin installed.
 
 #### External Shaders Problem
 
@@ -475,6 +483,7 @@ As you can see, our vertex shader takes in raw geometry data as well as our MVP 
 `deferred.frag`
 ```glsl
 #version 450
+
 layout(location = 0) in vec3 in_color;
 layout(location = 1) in vec3 in_normal;
 
@@ -529,7 +538,7 @@ void main() {
 ```
 This shader is shorter than the one from the first pass but it's still doing something we haven't seen before now.
 
-Let's break down `layout(input_attachment_index = 0, set = 0, binding = 0) uniform subpassInput u_diffuse;` bit by bit.
+Let's break down `layout(input_attachment_index = 0, set = 0, binding = 0) uniform subpassInput u_color;` bit by bit.
 
 Starting in the middle with `uniform` and it tells us that, well, this is a uniform data source just like our MVP matrix we use in our first pass.
 
@@ -543,19 +552,16 @@ Since we can't just use our input uniforms as a regular variable, we need to use
 
 Let's add back in the sub-buffers we commented out earlier in the lesson.
 ```rust
-let lighting_layout = lighting_pipeline
-    .layout()
-    .descriptor_set_layouts()
-    .get(0)
-    .unwrap();
+let lighting_layout = lighting_pipeline.layout().set_layouts().get(0).unwrap();
 let lighting_set = PersistentDescriptorSet::new(
+    &descriptor_set_allocator,
     lighting_layout.clone(),
     [
         WriteDescriptorSet::image_view(0, color_buffer.clone()),
         WriteDescriptorSet::image_view(1, normal_buffer.clone()),
-        WriteDescriptorSet::buffer(2, uniform_buffer_subbuffer),
-        WriteDescriptorSet::buffer(3, ambient_uniform_subbuffer),
-        WriteDescriptorSet::buffer(4, directional_uniform_subbuffer),
+        WriteDescriptorSet::buffer(2, uniform_subbuffer),
+        WriteDescriptorSet::buffer(3, ambient_subbuffer),
+        WriteDescriptorSet::buffer(4, directional_subbuffer),
     ],
 )
 .unwrap();
