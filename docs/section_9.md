@@ -55,7 +55,7 @@ Just a short note on Blender itself: it seems to export models with clockwise ve
 
 #### File Loader
 
-I created a new module named `obj_loader` where I added code related to loading obj files. I also moved our different vertex type declarations there since they can be used by the loading logic. To be perfectly honest, it's just a toy that does what we need for these lessons and no more. I wrote it as an exercise so you're welcome to use it if you want or not.
+I created a new module named `obj_loader` where I added code related to loading obj files. I also moved our different vertex type declarations there since they can be used by the loading logic. To be perfectly honest, it's just a toy that does what we need for these lessons and no more. I wrote it as an exercise, and you're welcome to use it if you want.
 
 ## Updating the Code
 
@@ -80,8 +80,8 @@ From this point on we can use `NormalVertex` with our Vulkano code as usual.
 I added a `Model` data type to handle loading the obj file as well as keeping track of the model transformation matrix. This is part of the process of moving towards having more than one model on screen, just like we did with lights. That's for another time though, so let's just look at how we use `Model`.
 
  ```rust
-let mut cube = Model::new("data/models/cube.obj").build();
-cube.translate(vec3(0.0, 0.0, -2.5));
+let mut model = Model::new("data/models/cube.obj").build();
+model.translate(vec3(0.0, 0.0, -4.0));
 ```
 
 Our first line is how we build a `Model`. We pass it a file name and that gives us a builder in response. The main option we have right now is that we could call `.color([f32; 3])` to change the color of the model. Left unspecified, the default is the same shade of orange we have been using.
@@ -90,34 +90,44 @@ The second line replaces our call to setting the `mvp.model` value like we have 
 
 ```rust
 let vertex_buffer = CpuAccessibleBuffer::from_iter(
-    device.clone(),
-    BufferUsage::all(),
+    &memory_allocator,
+    BufferUsage {
+        vertex_buffer: true,
+        ..BufferUsage::empty()
+    },
     false,
-    cube.data().iter().cloned()).unwrap();
+    model.data().iter().cloned(),
+)
+.unwrap();
 ```
 
 This is how we declare our vertex buffer. Instead of using a hard-coded array to hold the vertex data we ask our `Model` instance to give us the array of the data it's loaded. As you can see, it's much nicer-looking than what we had before. This sort of generality means that the same code can handle new model data without needing to be rewritten.
 
 ```rust
-let uniform_buffer_subbuffer = {
-    let elapsed = rotation_start.elapsed().as_secs() as f64 + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
+let uniform_subbuffer = {
+    let elapsed = rotation_start.elapsed().as_secs() as f64
+        + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
     let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
-    cube.zero_rotation();
-    cube.rotate(elapsed_as_radians as f32 * 50.0, vec3(0.0, 0.0, 1.0));
-    cube.rotate(elapsed_as_radians as f32 * 30.0, vec3(0.0, 1.0, 0.0));
-    cube.rotate(elapsed_as_radians as f32 * 20.0, vec3(1.0, 0.0, 0.0));
+    model.zero_rotation();
+    model.rotate(pi(), vec3(0.0, 1.0, 0.0));
+    model.rotate(elapsed_as_radians as f32 * 10.0, vec3(1.0, 0.0, 0.0));
+    model.rotate(elapsed_as_radians as f32 * 30.0, vec3(0.0, 1.0, 0.0));
+    model.rotate(elapsed_as_radians as f32 * 50.0, vec3(0.0, 0.0, 1.0));
 
     let uniform_data = deferred_vert::ty::MVP_Data {
-        model: cube.model_matrix().into(),
+        model: model.model_matrix().into(),
         view: mvp.view.into(),
         projection: mvp.projection.into(),
     };
 
-    uniform_buffer.next(uniform_data).unwrap()
+    uniform_buffer.from_data(uniform_data).unwrap()
 };
 ```
 
-This is the other major change we're making. You can see that we have moved the rotation logic to the `Model` the same way we did with the translation logic. We call `cube.zero_rotation();` to bring our `Model`'s rotation matrix back to zero. Without zeroing the rotation will accelerate without bounds
+This is the other major change we're making. You can see that we have moved the rotation logic to the `Model` the same way we did with the translation logic. We call `model.zero_rotation();` to start each frame back at zero, and then rotate based on an equation using elapsed time.
+
+Note that we also introduce this line: `model.rotate(pi(), vec3(0.0, 1.0, 0.0));`
+We do this because Blender .obj files are made assuming Y is up, in a right-handed coordinate system.  We have been using Y-down coordinates, but also in right-handed coordinates.  This rotates the object 180 degrees about the Y axis, to face the camera in our coordinate system, before we apply any additional rotation using `elapsed_as_radians`.
 
 #### Running the Code
 
@@ -153,8 +163,8 @@ Let's move on to a more complicated model. Included in our `models` directory is
 Still a pretty simple model, if we go by the number of vertices, but still light-years away from the simple shapes we've been using until this point. Let's add the following changes to our code and then run it.
 
 ```rust
-let mut cube = Model::new("./src/models/suzanne.obj").build();
-cube.translate(vec3(0.0, 0.0, -1.5));
+let mut model = Model::new("./src/models/suzanne.obj").build();
+model.translate(vec3(0.0, 0.0, -3.0));
 ```
 
 ![a picture of Suzanne showing apparent transparency](./imgs/9/suzanne_1.png)
@@ -285,45 +295,43 @@ Note that, as part of removing the need for the MVP matrix and real geometry dat
 To be able to use our square of dummy data, we need to put it inside a `CpuAccessibleBuffer`. Put the following code right after we declare `vertex_buffer`
 ```rust
 let dummy_verts = CpuAccessibleBuffer::from_iter(
-    device.clone(),
-    BufferUsage::all(),
+    &memory_allocator,
+    BufferUsage {
+        vertex_buffer: true,
+        ..BufferUsage::empty()
+    },
     false,
-    DummyVertex::list().iter().cloned()
-).unwrap();
+    DummyVertex::list().iter().cloned(),
+)
+.unwrap();
 ```
 
 #### Updating the SetDescriptor
 
-We can remove `uniform_buffer_subbuffer` from `ambient_set` as well as `directional_set`
+We can remove `uniform_subbuffer` from `ambient_set` as well as `directional_set`
 
 ```rust
-let ambient_layout = ambient_pipeline
-    .layout()
-    .descriptor_set_layouts()
-    .get(0)
-    .unwrap();
+let ambient_layout = ambient_pipeline.layout().set_layouts().get(0).unwrap();
 let ambient_set = PersistentDescriptorSet::new(
+    &descriptor_set_allocator,
     ambient_layout.clone(),
     [
         WriteDescriptorSet::image_view(0, color_buffer.clone()),
-        WriteDescriptorSet::buffer(1, ambient_uniform_subbuffer.clone()),
+        WriteDescriptorSet::buffer(1, ambient_subbuffer.clone()),
     ],
 )
 .unwrap();
 ```
 
 ```rust
-let directional_layout = directional_pipeline
-    .layout()
-    .descriptor_set_layouts()
-    .get(0)
-    .unwrap();
+let directional_layout = directional_pipeline.layout().set_layouts().get(0).unwrap();
 let directional_set = PersistentDescriptorSet::new(
+    &descriptor_set_allocator,
     directional_layout.clone(),
     [
         WriteDescriptorSet::image_view(0, color_buffer.clone()),
         WriteDescriptorSet::image_view(1, normal_buffer.clone()),
-        WriteDescriptorSet::buffer(2, directional_uniform_subbuffer.clone()),
+        WriteDescriptorSet::buffer(2, directional_subbuffer.clone()),
     ],
 )
 .unwrap();
@@ -334,16 +342,21 @@ let directional_set = PersistentDescriptorSet::new(
 Updating the draw commands is simple. Find the draw commands associated with the lighting pass and replace `vertex_buffer` with `dummy_verts`. The following is what my rendering commands look like, remember that I've gone back to using one directional light.
 ```rust
 let mut commands = AutoCommandBufferBuilder::primary(
-    device.clone(),
-    queue.family(),
+    &command_buffer_allocator,
+    queue.queue_family_index(),
     CommandBufferUsage::OneTimeSubmit,
 )
 .unwrap();
+
 commands
     .begin_render_pass(
-        framebuffers[image_num].clone(),
+        RenderPassBeginInfo {
+            clear_values,
+            ..RenderPassBeginInfo::framebuffer(
+                framebuffers[image_index as usize].clone(),
+            )
+        },
         SubpassContents::Inline,
-        clear_values,
     )
     .unwrap()
     .set_viewport(0, [viewport.clone()])
@@ -381,6 +394,7 @@ commands
     .unwrap()
     .end_render_pass()
     .unwrap();
+
 let command_buffer = commands.build().unwrap();
 ```
 
