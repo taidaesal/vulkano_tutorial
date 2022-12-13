@@ -6,9 +6,9 @@
 // from code provided by the Vulkano project under
 // the MIT license
 
+use crate::system::DirectionalLight;
 use model_loader::Model;
 use model_loader::{ColoredVertex, DummyVertex, NormalVertex};
-use crate::system::DirectionalLight;
 
 use vulkano::buffer::cpu_pool::CpuBufferPoolSubbuffer;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
