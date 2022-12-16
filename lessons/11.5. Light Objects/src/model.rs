@@ -8,6 +8,7 @@ use super::obj_loader::{ColoredVertex, Loader, NormalVertex};
 use nalgebra_glm::{
     identity, inverse_transpose, rotate_normalized_axis, scale, translate, vec3, TMat4, TVec3,
 };
+use std::cell::Cell;
 
 /// Holds our data for a renderable model, including the model matrix data
 ///
@@ -20,12 +21,19 @@ pub struct Model {
     translation: TMat4<f32>,
     rotation: TMat4<f32>,
     uniform_scale: f32,
+
+    // We might call multiple translation/rotation calls
+    // in between asking for the model matrix. This lets us
+    // only recreate the model matrices when needed.
+    // Use a Cell with the interior mutability pattern,
+    // so that it can be modified by methods that don't take &mut self
+    cache: Cell<Option<ModelMatrices>>,
+}
+
+#[derive(Copy, Clone)]
+struct ModelMatrices {
     model: TMat4<f32>,
     normals: TMat4<f32>,
-    // we might call multiple translation/rotation calls
-    // in between asking for the model matrix. This lets
-    // only recreate the model matrix when needed.
-    requires_update: bool,
 }
 
 pub struct ModelBuilder {
@@ -52,9 +60,7 @@ impl ModelBuilder {
             translation: identity(),
             rotation: identity(),
             uniform_scale: self.scale_factor,
-            model: identity(),
-            normals: identity(),
-            requires_update: false,
+            cache: Cell::new(None),
         }
     }
 
@@ -99,32 +105,34 @@ impl Model {
         self.data.clone()
     }
 
-    pub fn model_matrices(&mut self) -> (TMat4<f32>, TMat4<f32>) {
-        if self.requires_update {
-            self.model = self.translation * self.rotation;
-            self.model = scale(
-                &self.model,
-                &vec3(self.uniform_scale, self.uniform_scale, self.uniform_scale),
-            );
-            self.normals = inverse_transpose(self.model);
-            self.requires_update = false;
+    pub fn model_matrices(&self) -> (TMat4<f32>, TMat4<f32>) {
+        if let Some(cache) = self.cache.get() {
+            return (cache.model, cache.normals);
         }
-        (self.model, self.normals)
+
+        // recalculate matrices
+        let model = self.translation * self.rotation;
+        let model = scale(&model, &vec3(self.uniform_scale, self.uniform_scale, self.uniform_scale));
+        let normals = inverse_transpose(model);
+
+        self.cache.set(Some(ModelMatrices { model, normals }));
+
+        (model, normals)
     }
 
     pub fn rotate(&mut self, radians: f32, v: TVec3<f32>) {
         self.rotation = rotate_normalized_axis(&self.rotation, radians, &v);
-        self.requires_update = true;
+        self.cache.set(None);
     }
 
     pub fn translate(&mut self, v: TVec3<f32>) {
         self.translation = translate(&self.translation, &v);
-        self.requires_update = true;
+        self.cache.set(None);
     }
 
     /// Return the model's rotation to 0
     pub fn zero_rotation(&mut self) {
         self.rotation = identity();
-        self.requires_update = true;
+        self.cache.set(None);
     }
 }

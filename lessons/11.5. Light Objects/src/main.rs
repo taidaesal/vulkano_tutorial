@@ -68,7 +68,7 @@ fn main() {
             let directional_light = DirectionalLight::new([x, 0.0, z, 1.0], [1.0, 1.0, 1.0]);
 
             system.start();
-            system.geometry(&mut sphere);
+            system.geometry(&sphere);
             system.ambient();
             system.directional(&directional_light);
             system.light_object(&directional_light);

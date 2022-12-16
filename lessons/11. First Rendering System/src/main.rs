@@ -88,9 +88,9 @@ fn main() {
             torus.rotate(elapsed_as_radians as f32 * 12.0, vec3(1.0, 0.0, 0.0));
 
             system.start();
-            system.geometry(&mut teapot);
-            system.geometry(&mut suzanne);
-            system.geometry(&mut torus);
+            system.geometry(&teapot);
+            system.geometry(&suzanne);
+            system.geometry(&torus);
             system.ambient();
             system.directional(&directional_light_r);
             system.directional(&directional_light_g);
