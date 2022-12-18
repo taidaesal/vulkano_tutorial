@@ -21,15 +21,32 @@ Okay, that's great and all but why should we care? What winding lets us do is fi
 
 Okay, a simple example is below. Let's use the same code as we did for our depth testing but modify it a little bit. Let's set it so that the black triangle uses counter-clockwise winding while the white triangle uses clockwise winding.
 ```rust
-let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, [
-    Vertex { position: [-0.5, 0.5, -0.5], color: [0.0, 0.0, 0.0] },
-    Vertex { position: [0.5, 0.5, -0.5], color: [0.0, 0.0, 0.0] },
-    Vertex { position: [0.0, -0.5, -0.5], color: [0.0, 0.0, 0.0] },
-
-    Vertex { position: [-0.5, -0.5, -0.6], color: [1.0, 1.0, 1.0] },
-    Vertex { position: [0.5, -0.5, -0.6], color: [1.0, 1.0, 1.0] },
-    Vertex { position: [0.0, 0.5, -0.6], color: [1.0, 1.0, 1.0] }
-].iter().cloned()).unwrap();
+let vertices = [
+    Vertex {
+        position: [-0.5, 0.5, -0.5],
+        color: [0.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [0.5, 0.5, -0.5],
+        color: [0.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [0.0, -0.5, -0.5],
+        color: [0.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [-0.5, -0.5, -0.6],
+        color: [1.0, 1.0, 1.0],
+    },
+    Vertex {
+        position: [0.5, -0.5, -0.6],
+        color: [1.0, 1.0, 1.0],
+    },
+    Vertex {
+        position: [0.0, 0.5, -0.6],
+        color: [1.0, 1.0, 1.0],
+    },
+];
 ```
 
 If you run your code now you'll see that both triangles show up, exactly as in the last lesson. Let's change that now.

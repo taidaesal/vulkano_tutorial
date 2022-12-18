@@ -20,11 +20,12 @@ But before we introduce lighting we're going to need to upgrade our model. Up un
 We need to make an update to our `Vertex` datatype to add a field for `normals`. Normal vectors are vectors that stick straight out from a polygon. The point where the normal and the polygon meet will form a 90 degree angle. It's not important to really understand them right this moment, so just update your `Vertex` to include them.
 
 ```rust
-#[derive(Default, Debug, Clone)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
 struct Vertex {
     position: [f32; 3],
     normal: [f32; 3],
-    color: [f32; 3]
+    color: [f32; 3],
 }
 vulkano::impl_vertex!(Vertex, position, normal, color);
 ```
@@ -36,64 +37,203 @@ Notice the ordering! We're setting it up so normals are in the second slot and c
 First, let's add in a direct translation for the Model matrix. This is because our model is centered around the origin and we need to move it back far enough that we can see it. This line can go anywhere before the main program loop.
 
 ```rust
-mvp.model = translate(&identity(), &vec3(0.0, 0.0, -2.5));
+mvp.model = translate(&identity(), &vec3(0.0, 0.0, -5.0));
 ```
 
 Next let's update our vertex buffer to output all the data we need for our cube. This is actually a really, really poor way of handling anything more complicated than a couple triangles but I don't want to get into model handling in this lesson so we'll just do it the hacky way.
 
 ```rust
-let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, [
+let vertices = [
     // front face
-    Vertex { position: [-1.000000, -1.000000, 1.000000], normal: [0.0000, 0.0000, 1.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [-1.000000, 1.000000, 1.000000], normal: [0.0000, 0.0000, 1.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [1.000000, 1.000000, 1.000000], normal: [0.0000, 0.0000, 1.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [-1.000000, -1.000000, 1.000000], normal: [0.0000, 0.0000, 1.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [1.000000, 1.000000, 1.000000], normal: [0.0000, 0.0000, 1.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [1.000000, -1.000000, 1.000000], normal: [0.0000, 0.0000, 1.0000], color: [1.0, 0.35, 0.137]},
-
+    Vertex {
+        position: [-1.000000, -1.000000, 1.000000],
+        normal: [0.0000, 0.0000, 1.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [-1.000000, 1.000000, 1.000000],
+        normal: [0.0000, 0.0000, 1.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [1.000000, 1.000000, 1.000000],
+        normal: [0.0000, 0.0000, 1.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [-1.000000, -1.000000, 1.000000],
+        normal: [0.0000, 0.0000, 1.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [1.000000, 1.000000, 1.000000],
+        normal: [0.0000, 0.0000, 1.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [1.000000, -1.000000, 1.000000],
+        normal: [0.0000, 0.0000, 1.0000],
+        color: [1.0, 0.35, 0.137],
+    },
     // back face
-    Vertex { position: [1.000000, -1.000000, -1.000000], normal: [0.0000, 0.0000, -1.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [1.000000, 1.000000, -1.000000], normal: [0.0000, 0.0000, -1.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [-1.000000, 1.000000, -1.000000], normal: [0.0000, 0.0000, -1.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [1.000000, -1.000000, -1.000000], normal: [0.0000, 0.0000, -1.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [-1.000000, 1.000000, -1.000000], normal: [0.0000, 0.0000, -1.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [-1.000000, -1.000000, -1.000000], normal: [0.0000, 0.0000, -1.0000], color: [1.0, 0.35, 0.137]},
-
+    Vertex {
+        position: [1.000000, -1.000000, -1.000000],
+        normal: [0.0000, 0.0000, -1.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [1.000000, 1.000000, -1.000000],
+        normal: [0.0000, 0.0000, -1.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [-1.000000, 1.000000, -1.000000],
+        normal: [0.0000, 0.0000, -1.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [1.000000, -1.000000, -1.000000],
+        normal: [0.0000, 0.0000, -1.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [-1.000000, 1.000000, -1.000000],
+        normal: [0.0000, 0.0000, -1.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [-1.000000, -1.000000, -1.000000],
+        normal: [0.0000, 0.0000, -1.0000],
+        color: [1.0, 0.35, 0.137],
+    },
     // top face
-    Vertex { position: [-1.000000, -1.000000, 1.000000], normal: [0.0000, -1.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [1.000000, -1.000000, 1.000000], normal: [0.0000, -1.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [1.000000, -1.000000, -1.000000], normal: [0.0000, -1.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [-1.000000, -1.000000, 1.000000], normal: [0.0000, -1.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [1.000000, -1.000000, -1.000000], normal: [0.0000, -1.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [-1.000000, -1.000000, -1.000000], normal: [0.0000, -1.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-
+    Vertex {
+        position: [-1.000000, -1.000000, 1.000000],
+        normal: [0.0000, -1.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [1.000000, -1.000000, 1.000000],
+        normal: [0.0000, -1.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [1.000000, -1.000000, -1.000000],
+        normal: [0.0000, -1.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [-1.000000, -1.000000, 1.000000],
+        normal: [0.0000, -1.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [1.000000, -1.000000, -1.000000],
+        normal: [0.0000, -1.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [-1.000000, -1.000000, -1.000000],
+        normal: [0.0000, -1.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
     // bottom face
-    Vertex { position: [1.000000, 1.000000, 1.000000], normal: [0.0000, 1.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [-1.000000, 1.000000, 1.000000], normal: [0.0000, 1.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [-1.000000, 1.000000, -1.000000], normal: [0.0000, 1.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [1.000000, 1.000000, 1.000000], normal: [0.0000, 1.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [-1.000000, 1.000000, -1.000000], normal: [0.0000, 1.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [1.000000, 1.000000, -1.000000], normal: [0.0000, 1.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-
+    Vertex {
+        position: [1.000000, 1.000000, 1.000000],
+        normal: [0.0000, 1.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [-1.000000, 1.000000, 1.000000],
+        normal: [0.0000, 1.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [-1.000000, 1.000000, -1.000000],
+        normal: [0.0000, 1.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [1.000000, 1.000000, 1.000000],
+        normal: [0.0000, 1.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [-1.000000, 1.000000, -1.000000],
+        normal: [0.0000, 1.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [1.000000, 1.000000, -1.000000],
+        normal: [0.0000, 1.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
     // left face
-    Vertex { position: [-1.000000, -1.000000, -1.000000], normal: [-1.0000, 0.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [-1.000000, 1.000000, -1.000000], normal: [-1.0000, 0.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [-1.000000, 1.000000, 1.000000], normal: [-1.0000, 0.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [-1.000000, -1.000000, -1.000000], normal: [-1.0000, 0.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [-1.000000, 1.000000, 1.000000], normal: [-1.0000, 0.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [-1.000000, -1.000000, 1.000000], normal: [-1.0000, 0.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-
+    Vertex {
+        position: [-1.000000, -1.000000, -1.000000],
+        normal: [-1.0000, 0.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [-1.000000, 1.000000, -1.000000],
+        normal: [-1.0000, 0.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [-1.000000, 1.000000, 1.000000],
+        normal: [-1.0000, 0.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [-1.000000, -1.000000, -1.000000],
+        normal: [-1.0000, 0.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [-1.000000, 1.000000, 1.000000],
+        normal: [-1.0000, 0.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [-1.000000, -1.000000, 1.000000],
+        normal: [-1.0000, 0.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
     // right face
-    Vertex { position: [1.000000, -1.000000, 1.000000], normal: [1.0000, 0.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [1.000000, 1.000000, 1.000000], normal: [1.0000, 0.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [1.000000, 1.000000, -1.000000], normal: [1.0000, 0.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [1.000000, -1.000000, 1.000000], normal: [1.0000, 0.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [1.000000, 1.000000, -1.000000], normal: [1.0000, 0.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-    Vertex { position: [1.000000, -1.000000, -1.000000], normal: [1.0000, 0.0000, 0.0000], color: [1.0, 0.35, 0.137]},
-].iter().cloned()).unwrap();
+    Vertex {
+        position: [1.000000, -1.000000, 1.000000],
+        normal: [1.0000, 0.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [1.000000, 1.000000, 1.000000],
+        normal: [1.0000, 0.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [1.000000, 1.000000, -1.000000],
+        normal: [1.0000, 0.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [1.000000, -1.000000, 1.000000],
+        normal: [1.0000, 0.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [1.000000, 1.000000, -1.000000],
+        normal: [1.0000, 0.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+    Vertex {
+        position: [1.000000, -1.000000, -1.000000],
+        normal: [1.0000, 0.0000, 0.0000],
+        color: [1.0, 0.35, 0.137],
+    },
+];
 ```
 
-See? Pretty hideous. But it works so for now we can just ignore the model data for the rest of the lesson. We'll revisit the topic of models in a later lesson.
+See? Pretty hideous. But it works, so for now we can just ignore the model data for the rest of the lesson. We'll revisit the topic of models in a later lesson.
 
 #### Shaders
 
@@ -133,12 +273,25 @@ let rotation_start = Instant::now();
 ```
 
 ```rust
-let uniform_buffer_subbuffer = {
-    let elapsed = rotation_start.elapsed().as_secs() as f64 + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
+let uniform_subbuffer = {
+    let elapsed = rotation_start.elapsed().as_secs() as f64
+        + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
     let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
-    let mut model:TMat4<f32> = rotate_normalized_axis(&identity(), elapsed_as_radians as f32 * 50.0, &vec3(0.0, 0.0, 1.0));
-    model = rotate_normalized_axis(&model, elapsed_as_radians as f32 * 30.0, &vec3(0.0, 1.0, 0.0));
-    model = rotate_normalized_axis(&model, elapsed_as_radians as f32 * 20.0, &vec3(1.0, 0.0, 0.0));
+    let mut model: TMat4<f32> = rotate_normalized_axis(
+        &identity(),
+        elapsed_as_radians as f32 * 50.0,
+        &vec3(0.0, 0.0, 1.0),
+    );
+    model = rotate_normalized_axis(
+        &model,
+        elapsed_as_radians as f32 * 30.0,
+        &vec3(0.0, 1.0, 0.0),
+    );
+    model = rotate_normalized_axis(
+        &model,
+        elapsed_as_radians as f32 * 20.0,
+        &vec3(1.0, 0.0, 0.0),
+    );
     model = mvp.model * model;
 
     let uniform_data = vs::ty::MVP_Data {
@@ -147,7 +300,7 @@ let uniform_buffer_subbuffer = {
         projection: mvp.projection.into(),
     };
 
-    uniform_buffer.next(uniform_data).unwrap()
+    uniform_buffer.from_data(uniform_data).unwrap()
 };
 ```
 
@@ -178,14 +331,17 @@ Add this code in the same part of the file where we define our other structs
 #[derive(Default, Debug, Clone)]
 struct AmbientLight {
     color: [f32; 3],
-    intensity: f32
+    intensity: f32,
 }
 ```
 
 And we'll define it below the MVP definitions at the start of our `main` function.
 
 ```rust
-let ambient_light = AmbientLight { color: [1.0, 1.0, 1.0], intensity: 1.0 };
+let ambient_light = AmbientLight {
+    color: [1.0, 1.0, 1.0],
+    intensity: 1.0,
+};
 ```
 
 #### Shader updates
@@ -222,7 +378,8 @@ To use our uniform we need to create a buffer for it, fill it, and make sure it 
 The following line can go right under our declaration of `uniform_buffer`.
 
 ```rust
-let ambient_buffer = CpuBufferPool::<fs::ty::Ambient_Data>::uniform_buffer(device.clone());
+let ambient_buffer: CpuBufferPool<fs::ty::Ambient_Data> =
+    CpuBufferPool::uniform_buffer(memory_allocator.clone());
 ```
 
 Note the new datatype in the call we make to `CpuBufferPool`. Our `Ambient_Data` struct lives in our fragment shader, so we need to use `fs::ty` to access its data. Until now, all our custom data types have been added to our vertex shader so we only ever needed to use `vs::ty`.
@@ -230,13 +387,13 @@ Note the new datatype in the call we make to `CpuBufferPool`. Our `Ambient_Data`
 Next we can add our sub-buffer creation right under the sub-buffer creation for our MVP data in our main program loop.
 
 ```rust
-let ambient_uniform_subbuffer = {
+let ambient_subbuffer = {
     let uniform_data = fs::ty::Ambient_Data {
         color: ambient_light.color.into(),
-        intensity: ambient_light.intensity.into()
+        intensity: ambient_light.intensity.into(),
     };
 
-    ambient_buffer.next(uniform_data).unwrap()
+    ambient_buffer.from_data(uniform_data).unwrap()
 };
 ```
 
@@ -245,12 +402,13 @@ Nothing dramatic here. We're just creating an instance of `fs::ty::Ambient_Data`
 The last thing we need to do is update our set descriptor. Make sure our new descriptor set has the correct index
 
 ```rust
-let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+let layout = pipeline.layout().set_layouts().get(0).unwrap();
 let set = PersistentDescriptorSet::new(
+    &descriptor_set_allocator,
     layout.clone(),
     [
-        WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer),
-        WriteDescriptorSet::buffer(1, ambient_uniform_subbuffer),
+        WriteDescriptorSet::buffer(0, uniform_subbuffer),
+        WriteDescriptorSet::buffer(1, ambient_subbuffer),
     ],
 )
 .unwrap();
@@ -271,7 +429,7 @@ That looks good. We dimmed the light and now the object isn't as bright. But wha
 The reason for that is because that blue is our *clear color*. Everything that's blue is a place we haven't drawn anything. Because we're not rendering in those areas, the shaders aren't being run on them. Let's set the clear color to back and give it another look.
 
 ```rust
-let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into(), 1f32.into()];
+let clear_values = vec![Some([0.0, 0.0, 0.0, 1.0].into()), Some(1.0.into())];
 ```
 
 ![the same image as before, but with a black background](./imgs/6/ambient_2b.png)
@@ -306,13 +464,16 @@ The uniform struct is going to look a lot like our ambient struct and will be de
 #[derive(Default, Debug, Clone)]
 struct DirectionalLight {
     position: [f32; 3],
-    color: [f32; 3]
+    color: [f32; 3],
 }
 ```
 
 Let's put our declaration for this right next to our ambient light.
 ```rust
-let directional_light = DirectionalLight {position: [-4.0, -4.0, 0.0], color: [1.0, 1.0, 1.0]};
+let directional_light = DirectionalLight {
+    position: [-4.0, -4.0, 0.0],
+    color: [1.0, 1.0, 1.0],
+};
 ```
 
 This position will put a white light over our head and to our left.
@@ -324,30 +485,31 @@ Our shaders are a bit more complex now. Rather than trying to explain them in de
 ```rust
 mod vs {
     vulkano_shaders::shader!{
-    ty: "vertex",
-    src: "
-#version 450
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec3 normal;
-layout(location = 2) in vec3 color;
+        ty: "vertex",
+        src: "
+            #version 450
+            layout(location = 0) in vec3 position;
+            layout(location = 1) in vec3 normal;
+            layout(location = 2) in vec3 color;
 
-layout(location = 0) out vec3 out_color;
-layout(location = 1) out vec3 out_normal;
-layout(location = 2) out vec3 frag_pos;
+            layout(location = 0) out vec3 out_color;
+            layout(location = 1) out vec3 out_normal;
+            layout(location = 2) out vec3 frag_pos;
 
-layout(set = 0, binding = 0) uniform MVP_Data {
-mat4 model;
-mat4 view;
-mat4 projection;
-} uniforms;
+            layout(set = 0, binding = 0) uniform MVP_Data {
+                mat4 model;
+                mat4 view;
+                mat4 projection;
+            } uniforms;
 
-void main() {
-mat4 worldview = uniforms.view * uniforms.model;
-gl_Position = uniforms.projection * worldview * vec4(position, 1.0);
-out_color = color;
-out_normal = mat3(uniforms.model) * normal;
-frag_pos = vec3(uniforms.model * vec4(position, 1.0));
-}",
+            void main() {
+                mat4 worldview = uniforms.view * uniforms.model;
+                gl_Position = uniforms.projection * worldview * vec4(position, 1.0);
+                out_color = color;
+                out_normal = mat3(uniforms.model) * normal;
+                frag_pos = vec3(uniforms.model * vec4(position, 1.0));
+            }
+        ",
         types_meta: {
             use bytemuck::{Pod, Zeroable};
 
@@ -357,35 +519,35 @@ frag_pos = vec3(uniforms.model * vec4(position, 1.0));
 }
 
 mod fs {
-    vulkano_shaders::shader!{
-    ty: "fragment",
-    src: "
-#version 450
-layout(location = 0) in vec3 in_color;
-layout(location = 1) in vec3 in_normal;
-layout(location = 2) in vec3 frag_pos;
+    vulkano_shaders::shader! {
+        ty: "fragment",
+        src: "
+            #version 450
+            layout(location = 0) in vec3 in_color;
+            layout(location = 1) in vec3 in_normal;
+            layout(location = 2) in vec3 frag_pos;
 
-layout(location = 0) out vec4 f_color;
+            layout(location = 0) out vec4 f_color;
 
-layout(set = 0, binding = 1) uniform Ambient_Data {
-    vec3 color;
-    float intensity;
-} ambient;
+            layout(set = 0, binding = 1) uniform Ambient_Data {
+                vec3 color;
+                float intensity;
+            } ambient;
 
-layout(set = 0, binding = 2) uniform Directional_Light_Data {
-    vec3 position;
-    vec3 color;
-} directional;
+            layout(set = 0, binding = 2) uniform Directional_Light_Data {
+                vec3 position;
+                vec3 color;
+            } directional;
 
-void main() {
-    vec3 ambient_color = ambient.intensity * ambient.color;
-    vec3 light_direction = normalize(directional.position - frag_pos);
-    float directional_intensity = max(dot(in_normal, light_direction), 0.0);
-    vec3 directional_color = directional_intensity * directional.color;
-    vec3 combined_color = (ambient_color + directional_color) * in_color;
-    f_color = vec4(combined_color, 1.0);
-}
-",
+            void main() {
+                vec3 ambient_color = ambient.intensity * ambient.color;
+                vec3 light_direction = normalize(directional.position - frag_pos);
+                float directional_intensity = max(dot(in_normal, light_direction), 0.0);
+                vec3 directional_color = directional_intensity * directional.color;
+                vec3 combined_color = (ambient_color + directional_color) * in_color;
+                f_color = vec4(combined_color, 1.0);
+            }
+        ",
         types_meta: {
             use bytemuck::{Pod, Zeroable};
 
@@ -402,28 +564,30 @@ It's a lot to take in, but we aren't introducing any concepts you haven't seen b
 You probably know the drill by now. First we declare our uniform buffer pool and then we create our sub-buffer.
 
 ```rust
-let directional_buffer = CpuBufferPool::<fs::ty::Directional_Light_Data>::uniform_buffer(device.clone());
+let directional_buffer: CpuBufferPool<fs::ty::Directional_Light_Data> =
+    CpuBufferPool::uniform_buffer(memory_allocator.clone());
 ```
 
 ```rust
-let directional_uniform_subbuffer = {
+let directional_subbuffer = {
     let uniform_data = fs::ty::Directional_Light_Data {
         position: directional_light.position.into(),
-        color: directional_light.color.into()
+        color: directional_light.color.into(),
     };
 
-    directional_buffer.next(uniform_data).unwrap()
+    directional_buffer.from_data(uniform_data).unwrap()
 };
 ```
 
 ```rust
-let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+let layout = pipeline.layout().set_layouts().get(0).unwrap();
 let set = PersistentDescriptorSet::new(
+    &descriptor_set_allocator,
     layout.clone(),
     [
-        WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer),
-        WriteDescriptorSet::buffer(1, ambient_uniform_subbuffer),
-        WriteDescriptorSet::buffer(2, directional_uniform_subbuffer),
+        WriteDescriptorSet::buffer(0, uniform_subbuffer),
+        WriteDescriptorSet::buffer(1, ambient_subbuffer),
+        WriteDescriptorSet::buffer(2, directional_subbuffer),
     ],
 )
 .unwrap();
@@ -444,14 +608,14 @@ If you scrolled up just now to double-check that you didn't define a field named
 The first solution is to just give it what it wants: a value for the new field which has just magically shown up. If you play around with it you'll find out that it thinks it should be a `[u8; 4]` data type so we can just change our sub-buffer declaration to this.
 
 ```rust
-let directional_uniform_subbuffer = {
+let directional_subbuffer = {
     let uniform_data = fs::ty::Directional_Light_Data {
         _dummy0: [0, 0, 0, 0],
         position: directional_light.position.into(),
         color: directional_light.color.into()
     };
 
-    directional_buffer.next(uniform_data).unwrap()
+    directional_buffer.from_data(uniform_data).unwrap()
 };
 ```
 
@@ -498,12 +662,15 @@ We'll need to make a couple changes to our code but nothing too dramatic.
 #[derive(Default, Debug, Clone)]
 struct DirectionalLight {
     position: [f32; 4],
-    color: [f32; 3]
+    color: [f32; 3],
 }
 ```
 
 ```rust
-let directional_light = DirectionalLight {position: [-4.0, -4.0, 0.0, 1.0], color: [1.0, 1.0, 1.0]};
+let directional_light = DirectionalLight {
+    position: [-4.0, -4.0, 0.0, 1.0],
+    color: [1.0, 1.0, 1.0],
+};
 ```
 
 ```glsl
@@ -535,13 +702,13 @@ void main() {
 ```
 
 ```rust
-let directional_uniform_subbuffer = {
+let directional_subbuffer = {
     let uniform_data = fs::ty::Directional_Light_Data {
         position: directional_light.position.into(),
-        color: directional_light.color.into()
+        color: directional_light.color.into(),
     };
 
-    directional_buffer.next(uniform_data).unwrap()
+    directional_buffer.from_data(uniform_data).unwrap()
 };
 ```
 
@@ -551,13 +718,13 @@ I prefer solution 2 but it's up to you what you'd like to do. Either one will wo
 
 ![picture of a cube displaying directional lighting effects](./imgs/6/lit_cube.png)
 
-Looks pretty good. It's a single, relatively simple, graphical effect yet our scene looks miles better now than it did at the start of the lesson. Creating your first 3D lighting system is a big milestone for a novice graphics developer, so just take a moment to appreciate how far you've come in just six lessons.
+Looks pretty good. It's a single, relatively simple, graphical effect, yet our scene looks miles better now than it did at the start of the lesson. Creating your first 3D lighting system is a big milestone for a novice graphics developer, so just take a moment to appreciate how far you've come in just six lessons.
 
 #### A hidden catch
 
 Not to discourage you from enjoying your success, but there is a problem buried deep in our code. Yes, we have a lighting system and, sure, we could keep expanding it by adding specular lighting, bloom, or any number of things. But consider this: how would we add a *second* light to our scene?
 
-As it is now the only way we could add a second directional light to our scene would be to add a second directional light uniform into our shader. That's not very elegant, but it *would* work. The problem is, we don't want to stop at *just* two light sources. A real scene, or even just an example scene using a toy rendering system, might have dozens of light sources. To make things worse, the number of light sources might change while the scene is still running. If we have to hard-code each and every light source into our shader we'd quickly run into insurmountable problems.
+As it is now, the only way we could add a second directional light to our scene would be to add a second directional light uniform into our shader. That's not very elegant, but it *would* work. The problem is, we don't want to stop at *just* two light sources. A real scene, or even just an example scene using a toy rendering system, might have dozens of light sources. To make things worse, the number of light sources might change while the scene is still running. If we have to hard-code each and every light source into our shader we'd quickly run into insurmountable problems.
 
 Luckily, we have a solution in the form of a feature we've hinted at multiple times before: multi-stage rendering. This is what we're looking at in the next lesson.
 

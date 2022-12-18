@@ -550,6 +550,7 @@ fn main() {
 
             let directional_subbuffer =
                 generate_directional_buffer(&directional_buffer, &directional_light);
+
             let directional_layout = directional_pipeline.layout().set_layouts().get(0).unwrap();
             let directional_set = PersistentDescriptorSet::new(
                 &descriptor_set_allocator,
@@ -615,6 +616,7 @@ fn main() {
                 .unwrap()
                 .end_render_pass()
                 .unwrap();
+
             let command_buffer = commands.build().unwrap();
 
             let future = previous_frame_end

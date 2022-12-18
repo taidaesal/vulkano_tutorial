@@ -167,17 +167,17 @@ pub struct System {
     ambient_buffer: Arc<CpuAccessibleBuffer<ambient_frag::ty::Ambient_Data>>,
     directional_buffer: CpuBufferPool<directional_frag::ty::Directional_Light_Data>,
     dummy_verts: Arc<CpuAccessibleBuffer<[DummyVertex]>>,
+    vp_set: Arc<PersistentDescriptorSet>,
+    viewport: Viewport,
     framebuffers: Vec<Arc<Framebuffer>>,
     color_buffer: Arc<ImageView<AttachmentImage>>,
     normal_buffer: Arc<ImageView<AttachmentImage>>,
     frag_location_buffer: Arc<ImageView<AttachmentImage>>,
     specular_buffer: Arc<ImageView<AttachmentImage>>,
-    vp_set: Arc<PersistentDescriptorSet>,
     render_stage: RenderStage,
     commands: Option<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>>,
     image_index: u32,
     acquire_future: Option<SwapchainAcquireFuture>,
-    viewport: Viewport,
 }
 
 #[derive(Debug, Clone)]
@@ -540,17 +540,17 @@ impl System {
             ambient_buffer,
             directional_buffer,
             dummy_verts,
+            vp_set,
+            viewport,
             framebuffers,
             color_buffer,
             normal_buffer,
             frag_location_buffer,
             specular_buffer,
-            vp_set,
             render_stage,
             commands,
             image_index,
             acquire_future,
-            viewport,
         }
     }
 
@@ -776,6 +776,7 @@ impl System {
             self.model_uniform_buffer.from_data(uniform_data).unwrap()
         };
 
+        let (intensity, shininess) = model.specular();
         let specular_buffer = CpuAccessibleBuffer::from_data(
             &self.memory_allocator,
             BufferUsage {
@@ -784,8 +785,8 @@ impl System {
             },
             false,
             deferred_frag::ty::Specular_Data {
-                intensity: 0.5,
-                shininess: 32.0,
+                intensity,
+                shininess,
             },
         )
         .unwrap();
@@ -990,9 +991,6 @@ impl System {
             return;
         }
 
-        self.image_index = image_index;
-        self.acquire_future = Some(acquire_future);
-
         let clear_values = vec![
             Some([0.0, 0.0, 0.0, 1.0].into()),
             Some([0.0, 0.0, 0.0, 1.0].into()),
@@ -1014,7 +1012,7 @@ impl System {
                 RenderPassBeginInfo {
                     clear_values,
                     ..RenderPassBeginInfo::framebuffer(
-                        self.framebuffers[self.image_index as usize].clone(),
+                        self.framebuffers[image_index as usize].clone(),
                     )
                 },
                 SubpassContents::Inline,
@@ -1022,6 +1020,8 @@ impl System {
             .unwrap();
 
         self.commands = Some(commands);
+        self.image_index = image_index;
+        self.acquire_future = Some(acquire_future);
     }
 
     pub fn recreate_swapchain(&mut self) {

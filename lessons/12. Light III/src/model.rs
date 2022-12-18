@@ -132,7 +132,7 @@ impl Model {
     }
 
     pub fn specular(&self) -> (f32, f32) {
-        (self.specular_intensity.clone(), self.shininess.clone())
+        (self.specular_intensity, self.shininess)
     }
 
     pub fn translate(&mut self, v: TVec3<f32>) {

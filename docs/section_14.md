@@ -54,13 +54,13 @@ I've added our bitmap texture `texture_small.png` to the `src/textures` director
 
 `main.rs`
 ```rust
-let (texture, tex_future) = {
+let (image_data, image_dimensions) = {
     let png_bytes = include_bytes!("./textures/texture_small.png").to_vec();
     let cursor = Cursor::new(png_bytes);
     let decoder = png::Decoder::new(cursor);
     let mut reader = decoder.read_info().unwrap();
     let info = reader.info();
-    let dimensions = ImageDimensions::Dim2d {
+    let image_dimensions = ImageDimensions::Dim2d {
         width: info.width,
         height: info.height,
         array_layers: 1,
@@ -71,19 +71,11 @@ let (texture, tex_future) = {
         png::BitDepth::Two => 2,
         png::BitDepth::Four => 4,
         png::BitDepth::Eight => 8,
-        png::BitDepth::Sixteen => 16
+        png::BitDepth::Sixteen => 16,
     };
     image_data.resize((info.width * info.height * depth) as usize, 0);
     reader.next_frame(&mut image_data).unwrap();
-    let (image, future) = ImmutableImage::from_iter(
-        image_data.iter().cloned(),
-        dimensions,
-        MipmapsCount::One,
-        Format::R8G8B8A8_SRGB,
-        queue.clone(),
-    )
-    .unwrap();
-    (ImageView::new_default(image).unwrap(), future)
+    (image_data, image_dimensions)
 };
 ```
 
@@ -179,23 +171,14 @@ Before making our counter, let's update the current texture in `main.rs` to use 
 
 `main.rs`
 ```rust
-let (texture, tex_future) = {
-    let (dat, height, width) = mono.text("201");
-    let dimensions = ImageDimensions::Dim2d {
+let (image_data, image_dimensions) = {
+    let (image_data, height, width) = mono.text("201");
+    let image_dimensions = ImageDimensions::Dim2d {
         width: width,
         height: height,
         array_layers: 1,
     };
-
-    let (image, future) = ImmutableImage::from_iter(
-        dat.iter().cloned(),
-        dimensions,
-        MipmapsCount::One,
-        Format::R8G8B8A8_SRGB,
-        queue.clone(),
-    )
-    .unwrap();
-    (ImageView::new_default(image).unwrap(), future)
+    (image_data, image_dimensions)
 };
 ```
 
@@ -227,35 +210,25 @@ fn main() {
 
     event_loop.run(move |event, _, control_flow| {
         // ...
-
-        let (texture, tex_future) = {
-            let (dat, height, width) = mono.text(&now.elapsed().as_secs().to_string());
-            let dimensions = ImageDimensions::Dim2d {
+        let texture = {
+            let (image_data, height, width) = mono.text(&now.elapsed().as_secs().to_string());
+            let image_dimensions = ImageDimensions::Dim2d {
                 width: width,
                 height: height,
                 array_layers: 1,
             };
 
-            let (image, future) = ImmutableImage::from_iter(
-                dat.iter().cloned(),
-                dimensions,
+            let image = ImmutableImage::from_iter(
+                &memory_allocator,
+                image_data.iter().cloned(),
+                image_dimensions,
                 MipmapsCount::One,
                 Format::R8G8B8A8_SRGB,
-                queue.clone(),
+                &mut cmd_buffer_builder,
             )
             .unwrap();
-            (ImageView::new_default(image).unwrap(), future)
+            ImageView::new_default(image).unwrap()
         };
-        
-        // ...
-
-        let future = previous_frame_end.take().unwrap()
-            .join(acquire_future)
-            .join(tex_future.boxed())
-            .then_execute(queue.clone(), command_buffer).unwrap()
-            .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
-            .then_signal_fence_and_flush();
-        
         // ...
     }
 }

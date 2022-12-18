@@ -550,6 +550,7 @@ fn main() {
                     + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
                 let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
                 model.zero_rotation();
+                model.rotate(pi(), vec3(0.0, 1.0, 0.0));
                 model.rotate(elapsed_as_radians as f32 * 50.0, vec3(0.0, 0.0, 1.0));
                 model.rotate(elapsed_as_radians as f32 * 30.0, vec3(0.0, 1.0, 0.0));
                 model.rotate(elapsed_as_radians as f32 * 20.0, vec3(1.0, 0.0, 0.0));
@@ -594,6 +595,7 @@ fn main() {
 
             let directional_subbuffer =
                 generate_directional_buffer(&directional_buffer, &directional_light);
+
             let directional_layout = directional_pipeline.layout().set_layouts().get(0).unwrap();
             let directional_set = PersistentDescriptorSet::new(
                 &descriptor_set_allocator,

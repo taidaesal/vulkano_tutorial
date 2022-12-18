@@ -30,9 +30,6 @@ fn main() {
         &vec3(0.0, 1.0, 0.0),
     ));
 
-    let mut previous_frame_end =
-        Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
-
     let mut teapot = Model::new("data/models/teapot.obj").build();
     teapot.translate(vec3(-5.0, 2.0, -8.0));
 
@@ -47,6 +44,9 @@ fn main() {
     let directional_light_b = DirectionalLight::new([0.0, 4.0, 0.0, -2.0], [0.0, 0.0, 1.0]);
 
     let rotation_start = Instant::now();
+
+    let mut previous_frame_end =
+        Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
