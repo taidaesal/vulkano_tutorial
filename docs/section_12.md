@@ -61,62 +61,62 @@ impl System {
     pub fn new(event_loop: &EventLoop<()>) -> System  {
         // ...
         let render_pass = vulkano::ordered_passes_renderpass!(device.clone(),
-                attachments: {
-                    final_color: {
-                        load: Clear,
-                        store: Store,
-                        format: swapchain.format(),
-                        samples: 1,
-                    },
-                    color: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::A2B10G10R10_UNORM_PACK32,
-                        samples: 1,
-                    },
-                    normals: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::R16G16B16A16_SFLOAT,
-                        samples: 1,
-                    },
-                    frag_location: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::R16G16B16A16_SFLOAT,
-                        samples: 1,
-                    },
-                    specular: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::R16G16_SFLOAT,
-                        samples: 1,
-                    },
-                    depth: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::D16_UNORM,
-                        samples: 1,
-                    }
+            attachments: {
+                final_color: {
+                    load: Clear,
+                    store: Store,
+                    format: swapchain.image_format(),
+                    samples: 1,
                 },
-                passes: [
-                    {
-                        color: [color, normals, frag_location, specular],
-                        depth_stencil: {depth},
-                        input: []
-                    },
-                    {
-                        color: [final_color],
-                        depth_stencil: {depth},
-                        input: [color, normals, frag_location, specular]
-                    }
-                ]
-            )
-            .unwrap();
+                color: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::A2B10G10R10_UNORM_PACK32,
+                    samples: 1,
+                },
+                normals: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R16G16B16A16_SFLOAT,
+                    samples: 1,
+                },
+                frag_location: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R16G16B16A16_SFLOAT,
+                    samples: 1,
+                },
+                specular: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R16G16_SFLOAT,
+                    samples: 1,
+                },
+                depth: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::D16_UNORM,
+                    samples: 1,
+                }
+            },
+            passes: [
+                {
+                    color: [color, normals, frag_location, specular],
+                    depth_stencil: {depth},
+                    input: []
+                },
+                {
+                    color: [final_color],
+                    depth_stencil: {depth},
+                    input: [color, normals, frag_location, specular]
+                }
+            ]
+        )
+        .unwrap();
         // ...
         let (framebuffers, color_buffer, normal_buffer, frag_location_buffer, specular_buffer) =
             System::window_size_dependent_setup(
-                device.clone(),
+                &memory_allocator,
                 &images,
                 render_pass.clone(),
                 &mut viewport,
@@ -131,8 +131,8 @@ impl System {
     }
 
     fn window_size_dependent_setup(
-        device: Arc<Device>,
-        images: &[Arc<SwapchainImage<Window>>],
+        allocator: &StandardMemoryAllocator,
+        images: &[Arc<SwapchainImage>],
         render_pass: Arc<RenderPass>,
         viewport: &mut Viewport,
     ) -> (
@@ -144,40 +144,45 @@ impl System {
     ) {
         let dimensions = images[0].dimensions().width_height();
         viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
+
         let depth_buffer = ImageView::new_default(
-            AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
+            AttachmentImage::transient(allocator, dimensions, Format::D16_UNORM).unwrap(),
         )
         .unwrap();
+
         let color_buffer = ImageView::new_default(
             AttachmentImage::transient_input_attachment(
-                device.clone(),
+                allocator,
                 dimensions,
                 Format::A2B10G10R10_UNORM_PACK32,
             )
             .unwrap(),
         )
         .unwrap();
+
         let normal_buffer = ImageView::new_default(
             AttachmentImage::transient_input_attachment(
-                device.clone(),
+                allocator,
                 dimensions,
                 Format::R16G16B16A16_SFLOAT,
             )
             .unwrap(),
         )
         .unwrap();
+
         let frag_location_buffer = ImageView::new_default(
             AttachmentImage::transient_input_attachment(
-                device.clone(),
+                allocator,
                 dimensions,
                 Format::R16G16B16A16_SFLOAT,
             )
             .unwrap(),
         )
         .unwrap();
+
         let specular_buffer = ImageView::new_default(
             AttachmentImage::transient_input_attachment(
-                device.clone(),
+                allocator,
                 dimensions,
                 Format::R16G16_SFLOAT,
             )
@@ -185,34 +190,37 @@ impl System {
         )
         .unwrap();
 
+        let framebuffers = images
+            .iter()
+            .map(|image| {
+                let view = ImageView::new_default(image.clone()).unwrap();
+                Framebuffer::new(
+                    render_pass.clone(),
+                    FramebufferCreateInfo {
+                        attachments: vec![
+                            view,
+                            color_buffer.clone(),
+                            normal_buffer.clone(),
+                            frag_location_buffer.clone(),
+                            specular_buffer.clone(),
+                            depth_buffer.clone(),
+                        ],
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+
         (
-            images
-                .iter()
-                .map(|image| {
-                    let view = ImageView::new_default(image.clone()).unwrap();
-                    Framebuffer::new(
-                        render_pass.clone(),
-                        FramebufferCreateInfo {
-                            attachments: vec![
-                                view,
-                                color_buffer.clone(),
-                                normal_buffer.clone(),
-                                frag_location_buffer.clone(),
-                                specular_buffer.clone(),
-                                depth_buffer.clone(),
-                            ],
-                            ..Default::default()
-                        },
-                    )
-                    .unwrap()
-                })
-                .collect::<Vec<_>>(),
+            framebuffers,
             color_buffer.clone(),
             normal_buffer.clone(),
             frag_location_buffer.clone(),
             specular_buffer.clone(),
         )
     }
+}
 ```
 
 Note that we also added our new buffers to the sub-pass input and outputs as appropriate. Both attachments will be used as output targets in the geometry sub-pass and will be used as input attachments in our lighting sub-pass.
@@ -241,7 +249,7 @@ impl VP {
 impl System {
     pub fn set_view(&mut self, view: &TMat4<f32>) {
         self.vp.view = view.clone();
-        let look =  inverse(&view);
+        let look = inverse(&view);
         self.vp.camera_pos = vec3(look[12], look[13], look[14]);
         //...
     }
@@ -256,27 +264,36 @@ impl System {
     pub fn directional(&mut self, directional_light: &DirectionalLight) {
         //...
         let camera_buffer = CpuAccessibleBuffer::from_data(
-            self.device.clone(),
-            BufferUsage::all(),
+            &self.memory_allocator,
+            BufferUsage {
+                uniform_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
             directional_frag::ty::Camera_Data {
                 position: self.vp.camera_pos.into(),
-            }
-        ).unwrap();
+            },
+        )
+        .unwrap();
+
+        let directional_subbuffer =
+            self.generate_directional_buffer(&self.directional_buffer, &directional_light);
+
         let directional_layout = self
             .directional_pipeline
             .layout()
-            .descriptor_set_layouts()
+            .set_layouts()
             .get(0)
             .unwrap();
         let directional_set = PersistentDescriptorSet::new(
+            &self.descriptor_set_allocator,
             directional_layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, self.color_buffer.clone()),
                 WriteDescriptorSet::image_view(1, self.normal_buffer.clone()),
                 WriteDescriptorSet::image_view(2, self.frag_location_buffer.clone()),
                 WriteDescriptorSet::image_view(3, self.specular_buffer.clone()),
-                WriteDescriptorSet::buffer(4, directional_uniform_subbuffer.clone()),
+                WriteDescriptorSet::buffer(4, directional_subbuffer.clone()),
                 WriteDescriptorSet::buffer(5, camera_buffer.clone()),
             ],
         )
@@ -287,25 +304,30 @@ impl System {
     pub fn geometry(&mut self, model: &mut Model) {
         //...
         let specular_buffer = CpuAccessibleBuffer::from_data(
-            self.device.clone(),
-            BufferUsage::all(),
+            &self.memory_allocator,
+            BufferUsage {
+                uniform_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
             deferred_frag::ty::Specular_Data {
                 intensity: 0.5,
                 shininess: 32.0,
-            }
-        ).unwrap();
-        
-        let deferred_layout_model = self
+            },
+        )
+        .unwrap();
+
+        let model_layout = self
             .deferred_pipeline
             .layout()
-            .descriptor_set_layouts()
+            .set_layouts()
             .get(1)
             .unwrap();
         let model_set = PersistentDescriptorSet::new(
-            deferred_layout_model.clone(),
+            &self.descriptor_set_allocator,
+            model_layout.clone(),
             [
-                WriteDescriptorSet::buffer(0, model_uniform_subbuffer.clone()),
+                WriteDescriptorSet::buffer(0, model_subbuffer.clone()),
                 WriteDescriptorSet::buffer(1, specular_buffer.clone()),
             ],
         )
@@ -315,7 +337,14 @@ impl System {
 
     pub fn start(&mut self) {
         //...
-        let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0].into(), 1f32.into()];
+        let clear_values = vec![
+            Some([0.0, 0.0, 0.0, 1.0].into()),
+            Some([0.0, 0.0, 0.0, 1.0].into()),
+            Some([0.0, 0.0, 0.0, 1.0].into()),
+            Some([0.0, 0.0, 0.0, 1.0].into()),
+            Some([0.0, 0.0].into()),
+            Some(1.0.into()),
+        ];
         //...
     }
     
@@ -328,11 +357,12 @@ impl System {
             new_frag_location_buffer,
             new_specular_buffer,
         ) = System::window_size_dependent_setup(
-            self.device.clone(),
+            &self.memory_allocator,
             &new_images,
             self.render_pass.clone(),
             &mut self.viewport,
         );
+
         self.framebuffers = new_framebuffers;
         self.color_buffer = new_color_buffer;
         self.normal_buffer = new_normal_buffer;
@@ -383,6 +413,7 @@ void main() {
 `deferred.frag`
 ```glsl
 #version 450
+
 layout(location = 0) in vec3 in_color;
 layout(location = 1) in vec3 in_normal;
 layout(location = 2) in vec4 in_location;
@@ -413,8 +444,8 @@ The main changes to our deferred shaders is the way that we are now writing the 
 
 layout(input_attachment_index = 0, set = 0, binding = 0) uniform subpassInput u_color;
 layout(input_attachment_index = 1, set = 0, binding = 1) uniform subpassInput u_normals;
-layout(input_attachment_index = 1, set = 0, binding = 2) uniform subpassInput u_frag_location;
-layout(input_attachment_index = 1, set = 0, binding = 3) uniform subpassInput u_specular;
+layout(input_attachment_index = 2, set = 0, binding = 2) uniform subpassInput u_frag_location;
+layout(input_attachment_index = 3, set = 0, binding = 3) uniform subpassInput u_specular;
 
 layout(set = 0, binding = 4) uniform Directional_Light_Data {
     vec4 position;
@@ -503,7 +534,7 @@ fn main() {
     // ...
     let mut obj = Model::new("data/models/suzanne.obj").build();
     obj.translate(vec3(0.0, 0.0, -2.0));
-    obj.rotate(3.14, vec3(0.0, 1.0, 0.0));
+    obj.rotate(pi(), vec3(0.0, 1.0, 0.0));
     // ...
 }
 ```
@@ -572,16 +603,20 @@ A simple change to `System` is enough to use this dynamic input.
 impl System {
     pub fn geometry(&mut self, model: &mut Model) {
         //...
-        let(intensity, shininess) = model.specular();
+        let (intensity, shininess) = model.specular();
         let specular_buffer = CpuAccessibleBuffer::from_data(
-            self.device.clone(),
-            BufferUsage::all(),
+            &self.memory_allocator,
+            BufferUsage {
+                uniform_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
             deferred_frag::ty::Specular_Data {
                 intensity,
                 shininess,
-            }
-        ).unwrap();
+            },
+        )
+        .unwrap();
         //...
     }
 }
@@ -597,11 +632,15 @@ Let's change things up a bit. Let's have two cubes side-by-side, one with a high
 ```rust
 fn main() {
     //...
-    let mut cube1 = Model::new("data/models/cube.obj").specular(0.5, 12.0).build();
-    cube1.translate(vec3(1.1, 0.0, -2.0));
+    let mut cube1 = Model::new("data/models/cube.obj")
+        .specular(0.5, 12.0)
+        .build();
+    cube1.translate(vec3(1.1, 0.0, -4.0));
 
-    let mut cube2 = Model::new("data/models/cube.obj").specular(0.5, 128.0).build();
-    cube2.translate(vec3(-1.1, 0.0, -2.0));}
+    let mut cube2 = Model::new("data/models/cube.obj")
+        .specular(0.5, 128.0)
+        .build();
+    cube2.translate(vec3(-1.1, 0.0, -4.0));
     //...
 ```
 

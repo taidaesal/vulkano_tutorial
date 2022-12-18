@@ -14,28 +14,27 @@ The first thing we'll do is creating our `Cargo.toml` file. The dependencies lis
 ```toml
 [package]
 name = "example_project"
-version = "0.29.0"
+version = "0.32.0"
 authors = ["your_name"]
 edition = "2021"
 
 [dependencies]
-vulkano = "0.29.0"
-winit = "0.26.0"
-vulkano-win = "0.29.0"
-vulkano-shaders = "0.29.0"
-
+vulkano = "0.32.3"
+vulkano-shaders = "0.32.0"
+vulkano-win = "0.32.0"
+winit = "0.27.3"
 ```
 
 Let's go over the dependencies one by one.
 ```toml
-vulkano = "0.29.0"
+vulkano = "0.32.3"
 ```
 This is the main library ("crate" in Rust-speak) that we'll be using. This crate wraps the Vulkan API with its own Rust API so that we can call it from our application. We could use the Vulkan API directly if we really wanted to but that would be far more difficult than necessary as well as producing ugly code that doesn't follow Rust idioms. This is because the main Vulkan API is in C and can only be interacted with using Rust's Foreign Function Interface (FFI) mechanism. Although Rust is designed to interface with C when necessary, why would we do that when we have a lovely crate to wrap it all up in a nice Rusty bow for us?
 
 There is a small trade-off here because if you want to go from using Vulkano to using Vulkan directly there will be a learning curve as you get to grips with the native C API. However, learning Vulkano will teach you all the core concepts of Vulkan so it likely won't be that much work to make the change later.
 
 ```toml
-winit = "0.26.0"
+winit = "0.27.3"
 ```
 
 This crate solves a problem that surprises a lot of people learning about graphics programming for the first time: our main graphics API (Vulkan in this case) doesn't actually provide a way to show anything on the screen! On first glance this seems a bit crazy. After all, isn't the whole *point* of something like Vulkan or OpenGL to show something on the screen? Well, yes and no.
@@ -43,13 +42,13 @@ This crate solves a problem that surprises a lot of people learning about graphi
 The key thing to keep in mind is that Vulkan is how we use our *hardware* (usually a graphics card, sometimes integrated rendering hardware) to turn data into graphical output. However, the actual user interface (UI) is a bit of *software* that's provided by the host operating system. Vulkan, like OpenGL before it, is explicitly operating system agnostic which is just a fancy way of saying that it will never contain code that will only work on Windows or Linux or any other single platform. To interact with the operating system itself and do things like open windows or get user input we need to use a second crate.
 
 ```toml
-vulkano-win = "0.29.0"
+vulkano-win = "0.32.0"
 ```
 
 This is the other part of our "how do we get Vulkan to talk to our UI" problem. The `winit` crate lets us open a window for whatever operating system we're using but there still needs to be a connection between our new window and our graphics API. This crate is a small bit of code that lets us go "hey, you can put your graphics in this window." It would be possible to roll this functionality into the same crate as the window-handling code and this is the strategy used by a number of other libraries you might find out there; however, the `winit` maintainers have kept a tight focus on their project scope.
 
 ```toml
-vulkano-shaders = "0.29.0"
+vulkano-shaders = "0.32.0"
 ```
 
 I'm kind of cheating by listing this dependency in this section since we won't be using it for this lesson, but we will be using it in every other one so we might as well talk about it now.
@@ -66,8 +65,11 @@ Vulkan is a powerful API but that power comes with a trade-off in the form of a 
 The first section is straight-forward enough as it's just the list of dependencies. You should recognize the root crates from our discussion of our `Cargo.toml` file. The actual data types and functions being imported will be introduced later as they're used. Everything after this block will be inside our `main` method.
 
 ```rust
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
+use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+};
+use vulkano::device::physical::PhysicalDeviceType;
 use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, SwapchainImage};
@@ -76,9 +78,10 @@ use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass};
 use vulkano::swapchain::{
     self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+    SwapchainPresentInfo,
 };
 use vulkano::sync::{self, FlushError, GpuFuture};
-use vulkano::Version;
+use vulkano::{Version, VulkanLibrary};
 
 use vulkano_win::VkSurfaceBuild;
 
@@ -95,17 +98,27 @@ The first block of actual Vulkano code we're going to write is where we declare 
 
 ```rust
 let instance = {
-    let extensions = vulkano_win::required_extensions();
-    Instance::new(InstanceCreateInfo {
-        enabled_extensions: extensions,
-        max_api_version: Some(Version::V1_1),
-        ..Default::default()
-    })
+    let library = VulkanLibrary::new().unwrap();
+    let extensions = vulkano_win::required_extensions(&library);
+
+    Instance::new(
+        library,
+        InstanceCreateInfo {
+            enabled_extensions: extensions,
+            enumerate_portability: true, // required for MoltenVK on macOS
+            max_api_version: Some(Version::V1_1),
+            ..Default::default()
+        },
+    )
     .unwrap()
 };
 ```
 
-A few things to note. On the second line, `let extensions = ...`. The Vulkan specification separates core features from those which are considered optional. Rendering to a screen is one of these optional features and we need to specifically request that our created `Instance` contains it. We can get all necessary optional features by asking `vulkano_win` what it requires. A second thing to note is `Version::V1_1`. This is how we declare the *minimum* version of Vulkan we want. We can use Vulkan functions from higher versions but if the software or hardware doesn't meet this minimum requirement the program will refuse to run.
+A few things to note. On the second line, `let library = ...`. Vulkano supports a few different ways to load the Vulkan API, e.g. by finding an appropriate DLL or .so on your `LD_LIBRARY_PATH`.  The library is the part of Vulkano that either dynamically loads this DLL, or uses a static linker.  If this fails, check your installation of Vulkan.
+
+On the third line, `let extensions = ...`. The Vulkan specification separates core features from those which are considered optional. Rendering to a screen is one of these optional features and we need to specifically request that our created `Instance` contains it. We can get all necessary optional features by asking `vulkano_win` what it requires. A second thing to note is `Version::V1_1`. This is how we declare the *minimum* version of Vulkan we want. We can use Vulkan functions from higher versions but if the software or hardware doesn't meet this minimum requirement the program will refuse to run.
+
+Also, in order to use a Vulkan implementation that doesn't strictly conform to the entire Vulkan Specification, we must pass `enumerate_portability: true` to `InstanceCreateInfo`. Specificially, this allows MoltenVK to be used on macOS, which is an emulation layer that translates the Vulkan API to Apple's own Metal API. It will allow the Vulkan library loader to use the `VK_KHR_portability_enumeration`. See [this document](https://www.lunarg.com/wp-content/uploads/2022/04/Portability-Enumeration-Extension-APR2022.pdf) from the LunarG group for more information.
 
 If it seems strange that actually showing an image is considered "optional" by our graphics API remember the discussion earlier about how showing anything on the UI is considered outside the scope of the main Vulkan specification. In addition, the Vulkan API lets you use your graphics hardware for many things, not all of which require the ability to display it somewhere. We won't be getting into the full range of possibility in these tutorials, but it's a good demonstration of Vulkan's approach of leaving it to the programmer to specify anything that might have more than one option.
 
@@ -138,94 +151,123 @@ Modern computers are heavily based around the idea of *asynchronous* operations.
 The difference between Vulkan `Queue`s and `QueueFamily`s can be thought of this way: the `QueueFamily` is the *type* of operation we can do whereas a `Queue` is an instance of that type of operation. We will create a `Queue` later in the lesson but it is convenient for us to find the `PhysicalDevice` and the `QueueFamily` at the same time.
 
 ```rust
-let device_ext = DeviceExtensions {
+let device_extensions = DeviceExtensions {
     khr_swapchain: true,
-    ..DeviceExtensions::none()
+    ..DeviceExtensions::empty()
 };
 
-let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-    .filter(|&p| p.supported_extensions().is_superset_of(&device_ext))
+let (physical_device, queue_family_index) = instance
+    .enumerate_physical_devices()
+    .unwrap()
+    .filter(|p| p.supported_extensions().contains(&device_extensions))
     .filter_map(|p| {
-        p.queue_families()
-            .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
-            .map(|q| (p, q))
+        p.queue_family_properties()
+            .iter()
+            .enumerate()
+            .position(|(i, q)| {
+                // pick first queue_familiy_index that handles graphics and can draw on the surface created by winit
+                q.queue_flags.graphics && p.surface_support(i as u32, &surface).unwrap_or(false)
+            })
+            .map(|i| (p, i as u32))
     })
-    .min_by_key(|(p, _)| match p.properties().device_type {
-        PhysicalDeviceType::DiscreteGpu => 0,
-        PhysicalDeviceType::IntegratedGpu => 1,
-        PhysicalDeviceType::VirtualGpu => 2,
-        PhysicalDeviceType::Cpu => 3,
-        PhysicalDeviceType::Other => 4,
+    .min_by_key(|(p, _)| {
+        // lower score for preferred device types
+        match p.properties().device_type {
+            PhysicalDeviceType::DiscreteGpu => 0,
+            PhysicalDeviceType::IntegratedGpu => 1,
+            PhysicalDeviceType::VirtualGpu => 2,
+            PhysicalDeviceType::Cpu => 3,
+            PhysicalDeviceType::Other => 4,
+            _ => 5,
+        }
     })
-    .unwrap();
+    .expect("No suitable physical device found");
 ```
 
 That seems rather complicated but, luckily, most of that complication comes from the way it uses Rust mapping functions rather than Vulkano itself. We'll go though bit by bit.
 
 ```rust
-let device_ext = DeviceExtensions {
+let device_extensions = DeviceExtensions {
     khr_swapchain: true,
-    ..DeviceExtensions::none()
+    ..DeviceExtensions::empty()
 };
 ```
 
 Just like with our `Instance` earlier, optional features are specified via the relevant _extensions_. In our case, we want to make sure we can use a `Swapchain` with our physical device. We'll see what that means in a bit. 
 
 ```rust
-let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
+let (physical_device, queue_family_index) = instance
+    .enumerate_physical_devices()
+    .unwrap()
 ```
 
-If you haven't used a language which features it, Rust allows multiple-assignment where multiple variables can be declared or modified in a single statement. The vulkan-specific code is `PhysicalDevice::enumerate(&instance)` which will just list every physical device our `Instance` can see.
+If you haven't used a language which features it, Rust allows multiple-assignment where multiple variables can be declared or modified in a single statement. The vulkan-specific code is `instance.enumerate_physical_devices()` which will just list every physical device our `Instance` can see.
 
 ```rust
-.filter(|&p| p.supported_extensions().is_superset_of(&device_ext))
+.filter(|p| p.supported_extensions().contains(&device_extensions))
 ```
 
-This takes the list we got on the first line and filters each item. First it queries which extensions it supports and checks that it is a superset of the set of extensions we want. It's totally normal that a physical device will support more extensions than we want or will use, but it absolutely must meet the minimum standards we declared with `device_ext`. In this case, we would not even be able to render to the target if we picked a physical device that did not support `khr_swapchain`. The output of `.filter` will be all items in the list which evaluated as `true` in the [closure](https://doc.rust-lang.org/rust-by-example/fn/closures.html) (also sometimes called a _lambda function_).
+This takes the list we got on the first line and filters each item. First it queries which extensions it supports and checks that it supports at least the set of extensions we want. It's totally normal that a physical device will support more extensions than we want or will use, but it absolutely must meet the minimum standards we declared with `device_extensions`. In this case, we would not even be able to render to the target if we picked a physical device that did not support `khr_swapchain`. The output of `.filter` will be all items in the list which evaluated as `true` in the [closure](https://doc.rust-lang.org/rust-by-example/fn/closures.html) (also sometimes called a _lambda function_).
 
 ```rust
 .filter_map(|p| {
-    p.queue_families()
-        .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
-        .map(|q| (p, q))
+    p.queue_family_properties()
+        .iter()
+        .enumerate()
+        .position(|(i, q)| {
+            // pick first queue_familiy_index that handles graphics and can draw on the surface created by winit
+            q.queue_flags.graphics && p.surface_support(i as u32, &surface).unwrap_or(false)
+        })
+        .map(|i| (p, i as u32))
 })
 ```
 
-This is where we bring the `QueueFamily` into the equation. For each of the physical devices we found in the last section we query what queue families it supports. And for each of those queue families we check that it supports graphical output (remember, not every Vulkan target will!) and that it is supported by the actual `Surface` we've created. For each queue family that passes this test we return a tuple that contains the physical device and the queue family.
+This is where we bring the `QueueFamily` into the equation. For each of the physical devices we found in the last section we query what queue families it supports. And for each of those queue families we check that it supports graphical output (remember, not every Vulkan target will!) and that it is supported by the actual `Surface` we've created. For each queue family that passes this test we return a tuple that contains the physical device and the queue family index.
 
 ```rust
-.min_by_key(|(p, _)| match p.properties().device_type {
-    PhysicalDeviceType::DiscreteGpu => 0,
-    PhysicalDeviceType::IntegratedGpu => 1,
-    PhysicalDeviceType::VirtualGpu => 2,
-    PhysicalDeviceType::Cpu => 3,
-    PhysicalDeviceType::Other => 4,
+.min_by_key(|(p, _)| {
+    // lower score for preferred device types
+    match p.properties().device_type {
+        PhysicalDeviceType::DiscreteGpu => 0,
+        PhysicalDeviceType::IntegratedGpu => 1,
+        PhysicalDeviceType::VirtualGpu => 2,
+        PhysicalDeviceType::Cpu => 3,
+        PhysicalDeviceType::Other => 4,
+        _ => 5,
+    }
 })
-.unwrap();
 ```
 
 This section is technically optional but I thought it would be a good idea to have it anyway. At this point we might have multiple physical devices which meet our technical needs. That is, they could run our code without crashing and show the right image on the screen. For anything we're going to be doing that's totally fine as we aren't going to even come close to taxing what modern graphics hardware is capable of. But, like any gamer could tell you, not all graphics hardware is created equal. If we have the choice, we want to prefer a dedicated graphics card to an integrated solution. This is a quick bit of code that will organize all our options into a priority list and choose the one that scores the best.
 
+```rust
+.expect("No suitable physical device found");
+```
+
+If the result of this entire filter chain returns `None`, then we fail with an error message that no suitable physical device can be found on this computer.  For example, there may be no GPU at all, or none that supports the `Swapchain` feature, e.g. when running on server hardware with no display.
+
 #### Device
 
-Now that we've finished querying information about the physical device we'll be using, we need to create a `Device` object. This is the *software* representation of the hardware being stored in our `physical` variable. As part of creating our `Device` we will set up a number of configuration options and, on creation, will receive both an instance of `Device` as well as a list of `Queue`s we can use to submit operations to the `Device`.
+Now that we've finished querying information about the physical device we'll be using, we need to create a logical `Device` object. This is the *software* representation of the hardware being referenced by our `physical_device` variable. As part of creating our `Device` we will set up a number of configuration options and, on creation, will receive both an instance of `Device` as well as a list of `Queue`s we can use to submit operations to the `Device`.
 
 ```rust
 let (device, mut queues) = Device::new(
     physical_device,
     DeviceCreateInfo {
-        enabled_extensions: physical_device.required_extensions().union(&device_ext),
-
-        queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+        enabled_extensions: device_extensions,
+        queue_create_infos: vec![QueueCreateInfo {
+            queue_family_index,
+            ..Default::default()
+        }],
         ..Default::default()
     },
 )
 .unwrap();
 ```
 
-Like we've seen in other places, we need to consider which optional extensions we want to have enabled at any particular time. With `device_ext` we indicate we want the swapchain extension but will otherwise accept the default. Note also the `Info` struct pattern in use again here.
+Like we've seen in other places, we need to consider which optional extensions we want to have enabled at any particular time. With `device_extensions` we indicate we want the swapchain extension but will otherwise accept the default. Note also the `Info` struct pattern in use again here.
 
-For the creation of the `Device` itself we need to provide it the `PhysicalDevice` to use, the list of features supported by the `PhysicalDevice`, as well as a list of `QueueFamily` objects. The exact format is an iterator of tuples of the form `(QueueFamily, f32)` where the float is a priority value between `0.0` and `1.0`. We will mostly ignore the priority argument in these tutorials and will revisit the list when it comes time to add a second queue for data transfer operations.
+For the creation of the `Device` itself we need to provide it the `PhysicalDevice` to use, the list of features supported by the `PhysicalDevice`, as well as a list of `QueueCreateInfo` objects. Each `QueueCreateInfo` should use the `queue_family_index` we determined above when enumerating the devices. We will mostly just use the defaults when creating queues, and will revisit this when it comes time to add a second queue for data transfer operations.
 
 #### Queues
 
@@ -245,17 +287,24 @@ This can be a bit hard to visualize at first, but it's something any gamer will 
 
 ```rust
 let (mut swapchain, images) = {
-    let caps = physical_device
+    let caps = device
+        .physical_device()
         .surface_capabilities(&surface, Default::default())
         .unwrap();
+
     let usage = caps.supported_usage_flags;
     let alpha = caps.supported_composite_alpha.iter().next().unwrap();
+
     let image_format = Some(
-        physical_device
+        device
+            .physical_device()
             .surface_formats(&surface, Default::default())
             .unwrap()[0]
             .0,
     );
+
+    let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+    let image_extent: [u32; 2] = window.inner_size().into();
 
     Swapchain::new(
         device.clone(),
@@ -263,7 +312,7 @@ let (mut swapchain, images) = {
         SwapchainCreateInfo {
             min_image_count: caps.min_image_count,
             image_format,
-            image_extent: surface.window().inner_size().into(),
+            image_extent,
             image_usage: usage,
             composite_alpha: alpha,
             ..Default::default()
@@ -280,6 +329,15 @@ let (mut swapchain, images) = {
 `image_format` is the format of the `Image`s. Remember that an `Image` is, in effect, a multi-dimensional array. The format is how we record the number of array dimensions as well as the type of data being stored in the array.
 
 There are too many arguments being passed to `Swapchain::new` to be worth covering here, particularly since we'll be using the code listed above throughout the rest of our tutorial. It's safe to leave it alone until you decide to explore the more complete range of options `Swapchain` gives us.
+
+#### Allocators
+
+Vulkano supports a variety of memory allocators, which it uses to customize how buffers on both the host CPU and on the GPU are created and recycled, as well as command buffers used to transmit a series of instructions from the CPU to the GPU. For now, we just need a `StandardCommandBufferAllocator` to allocate memory to send commands to the given `device`.  In future tutorials, we'll see other allocators, but they'll still mostly use the defaults like this.
+
+```rust
+let command_buffer_allocator =
+    StandardCommandBufferAllocator::new(device.clone(), Default::default());
+```
 
 #### Shaders
 
@@ -348,7 +406,7 @@ The `window_size_dependent_setup` helper function will be listed shortly, but ri
 
 ```rust
 fn window_size_dependent_setup(
-    images: &[Arc<SwapchainImage<Window>>],
+    images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {
@@ -435,12 +493,12 @@ event_loop.run(move |event, _, control_flow| {
         Event::RedrawEventsCleared => {
           // do our render operations here
         },
-        () => {}
+        _ => {}
     }
   });
 ```
 
-If you're new to Rust you might be a bit confused by the last item `() => {}`. Rust `match` statements must be *comprehensive*, which just means that they need to account for all possible values. There are, as you could probably guess, way more than 3 possible events so we use a special bit of Rust syntax to say, basically, "if we have anything else that doesn't fit above, do nothing." Rust forces us to be explicit about this as a way of catching errors where programmers update an enum but forget to update where it's used.
+If you're new to Rust you might be a bit confused by the last item `_ => {}`. Rust `match` statements must be *comprehensive*, which just means that they need to account for all possible values. There are, as you could probably guess, way more than 3 possible events so we use a special bit of Rust syntax to say, basically, "if we have anything else that doesn't fit above, do nothing." Rust forces us to be explicit about this as a way of catching errors where programmers update an enum but forget to update where it's used.
 
 This `match` block will be unchanged throughout these tutorials, so for the most part it won't be called out specifically after this point. When we talk about the "program loop" in later tutorials we mean the code that goes where the comment `// do our render operations here` currently lives.
 
@@ -449,7 +507,11 @@ This `match` block will be unchanged throughout these tutorials, so for the most
 At the start of our program loop we call a simple bit of code on our `previous_frame_end` variable.
 
 ```rust
-previous_frame_end.as_mut().take().unwrap().cleanup_finished();
+previous_frame_end
+    .as_mut()
+    .take()
+    .unwrap()
+    .cleanup_finished();
 ```
 
 This little line of code is actually quite important. It checks if the `GpuFuture` operations stored by `previous_frame_end` have finished and, if so, release any resources held by them. Memory management is not usually something Rust programs have to concern themselves with, but with concurrent operations being split between the CPU and the GPU this is one area where we do need to pay attention to releasing resources once we're done with them.
@@ -462,8 +524,11 @@ We mentioned at the start of this section that the swapchain can become invalid 
 
 ```rust
 if recreate_swapchain {
+    let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+    let image_extent: [u32; 2] = window.inner_size().into();
+
     let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
-        image_extent: surface.window().inner_size().into(),
+        image_extent,
         ..swapchain.create_info()
     }) {
         Ok(r) => r,
@@ -478,7 +543,7 @@ if recreate_swapchain {
 }
 ```
 
-As you can see, Vulkano supplies a very useful helper method, `recreate().dimensions()`, that lets us produce a new swapchain using all the options and capabilities of an old one. This saves us quite a bit of code compared to where we initially created our swapchain. The return values are, just like when we initially created our swapchain, a `Swapchain` object and a `Vec` of `Image`s. We'll replace the old values with these new values in just a moment. The last thing to take note of is the error handling. We accept the `SwapchainCreationError::UnsupportedDimensions` error and continue as this is usually a spurious error generated when the user is currently resizing the window. We can just repeat the loop until swapchain creation succeeds in this case.
+As you can see, Vulkano supplies a very useful helper method, `swapchain.recreate()`, that lets us produce a new swapchain using all the options and capabilities of an old one. This saves us quite a bit of code compared to where we initially created our swapchain. The return values are, just like when we initially created our swapchain, a `Swapchain` object and a `Vec` of `Image`s. We'll replace the old values with these new values in just a moment. The last thing to take note of is the error handling. We accept the `SwapchainCreationError::ImageExtentNotSupported` error and continue as this is usually a spurious error generated when the user is currently resizing the window. We can just repeat the loop until swapchain creation succeeds in this case.
 
 The last thing to take note of is that we also need to recreate our framebuffers. This is because our framebuffers depends on the `Image`s stored in the swapchain. If one changes the other must follow. There aren't any hidden complications here and we can just use our `window_size_dependent_setup` helper function as before.
 
@@ -487,21 +552,22 @@ The last thing to take note of is that we also need to recreate our framebuffers
 Now that we've taken care of making sure our rendering environment is valid we can get down to the process of actually rendering something. The first step is acquiring an `Image` to use from our `Swapchain`.
 
 ```rust
-let (image_num, suboptimal, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
-    Ok(r) => r,
-    Err(AcquireError::OutOfDate) => {
-        recreate_swapchain = true;
-        return;
-    },
-    Err(e) => panic!("Failed to acquire next image: {:?}", e)
-};
+let (image_index, suboptimal, acquire_future) =
+    match swapchain::acquire_next_image(swapchain.clone(), None) {
+        Ok(r) => r,
+        Err(AcquireError::OutOfDate) => {
+            recreate_swapchain = true;
+            return;
+        }
+        Err(e) => panic!("Failed to acquire next image: {:?}", e),
+    };
 
 if suboptimal {
     recreate_swapchain = true;
 }
 ```
 
-Remember that the `Swapchain` is actually a vector of `Image`s, only some of which will be available for our use at any given time. The first returned value is the index of the `Image` we can use for rendering and the second returned value is a `GpuFuture` object which we can use to make sure that this function has completed before trying to use it. Notice also that we need to do some error handling to check (once again) if something has happened that requires that we recreate our swapchain.
+Remember that the `Swapchain` is actually a vector of `Image`s, only some of which will be available for our use at any given time. The first returned value is the index of the `Image` we can use for rendering. The third returned value is a `GpuFuture` object which we can use to make sure that this function has completed before trying to use it. Notice also that we need to do some error handling to check (once again) if something has happened that requires that we recreate our swapchain.
 
 A note on `acquire_future`. The actual data type for this is `SwapchainAcquireFuture` and represents when the graphics hardware will have access to a specified `Image`. We need to keep track of this so that we don't accidentally try to have our graphics hardware run our rendering commands before the `Image` is ready for use. It's these kinds of scheduling issues that often cause headaches when doing concurrent programming. If, in the future, you get errors related to invalid or unavailable swapchain images, the first thing you should double-check is that you're handling the `SwapchainAcquireFuture` correctly.
 
@@ -512,7 +578,7 @@ Lastly, Vulkano returns a `suboptimal` value that indicates if the current swapc
 A very small bit of code that we need to declare before starting the actual rendering is our clear value. This is a color that we use to clear our images before using them. This serves as a background color for our scene. In the future, setting it to some garish color can be a good way to double-check if there are holes in your models but for now we'll just set it to black.
 
 ```rust
-let clear_values = vec!([0.0, 0.0, 0.0, 1.0].into());
+let clear_values = vec![Some([0.0, 0.0, 0.0, 1.0].into())];
 ```
 
 #### Command Buffer
@@ -525,26 +591,32 @@ Recent changes to the Vulkano library have separated this process into two steps
 
 ```rust
 let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary(
-    device.clone(),
-    queue.family(),
+    &command_buffer_allocator,
+    queue.queue_family_index(),
     CommandBufferUsage::OneTimeSubmit,
 )
 .unwrap();
+
 cmd_buffer_builder
     .begin_render_pass(
-        framebuffers[image_num].clone(),
+        RenderPassBeginInfo {
+            clear_values,
+            ..RenderPassBeginInfo::framebuffer(
+                framebuffers[image_index as usize].clone(),
+            )
+        },
         SubpassContents::Inline,
-        clear_values,
     )
     .unwrap()
     .end_render_pass()
     .unwrap();
+
 let command_buffer = cmd_buffer_builder.build().unwrap();
 ```
 
 A bit underwhelming, I know, but remember that this lesson is only here to produce a minimal Vulkan application and we're not really doing any *actual* rendering right now. This will get a bit more exciting in the next lesson. Let's look over what we do have anyway to learn the structure of a `CommandBuffer`.
 
-Vulkano provides a nice `AutoCommandBufferBuilder` helper to handle buffer creation. The first thing to notice about it is the second argument, `queue.family()`. Remember from earlier that Vulkan has a number of `QueueFamily`s, each one supporting a different type of operations. Right now we only have a single `Queue` and a single `QueueFamily`, a graphics queue that we use to do drawing operations.
+Vulkano provides a nice `AutoCommandBufferBuilder` helper to handle buffer creation. Note the `command_buffer_allocator`, which we created earlier, for communication between the CPU and the given `device`. Also note the second argument, `queue.queue_family_index()`. Remember from earlier that Vulkan has a number of `QueueFamily`s, each one supporting different types of operations. Right now we only have a single `Queue` and a single `QueueFamily`, a graphics queue that we use to do drawing operations.
 
 To start our rendering operation we need to call `.begin_render_pass`. This starts the process we initially declared back when we created our `Renderpass` object. We'll see in more detail what this means for us in the next lesson, but for now just remember that everything we set up in our `Renderpass` and `GraphicsPipeline` will be used here between `.begin_render_pass` and `.end_render_pass`.
 
@@ -561,13 +633,16 @@ let future = previous_frame_end
     .join(acquire_future)
     .then_execute(queue.clone(), command_buffer)
     .unwrap()
-    .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+    .then_swapchain_present(
+        queue.clone(),
+        SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+    )
     .then_signal_fence_and_flush();
 ```
 
 A lot to unpack here. First, notice the `.join` command. This is a way of taking two `GpuFuture` objects and turning them into one, being sure that the first `GpuFuture` will complete before trying to run the second `GpuFuture`. Secondly, notice that we provide our `acquire_future` here. What this means is that we're telling Vulkan to wait until `previous_frame_end` is done, then make sure that `acquire_future` is done, and *then* run our other commands.
 
-After we join the two futures, we submit a list of commands. The first command is to execute the rendering operations we've put in our `CommandBuffer`. The second command tells our graphics hardware to stop using the current image and present it to the user (this is the command that actually makes the operation visible). The last operation, `then_signal_fence_and_flush`, is how we keep track of whether or not this set of commands has finished.
+After we join the two futures, we submit a list of commands. The first command, `then_execute`, is to execute the rendering operations we've put in our `CommandBuffer`. The second command, `then_swapchain_present`, tells our graphics hardware to stop using the current image and present it to the user (this is the command that actually makes the operation visible). The last operation, `then_signal_fence_and_flush`, is how we keep track of whether or not this set of commands has finished.
 
 #### Waiting
 
@@ -604,7 +679,7 @@ If everything has gone well, we've finished! Just save your code, run `cargo run
 Okay, "glory" might be overselling it a bit. To make it somewhat more interesting, let's change the clear color to a nice light blue and run it again.
 
 ```rust
-let clear_values = vec!([0.0, 0.68, 1.0, 1.0].into());
+let clear_values = vec![Some([0.0, 0.68, 1.0, 1.0].into())];
 ```
 
 ![updated background color](./imgs/1/updated_window.png)

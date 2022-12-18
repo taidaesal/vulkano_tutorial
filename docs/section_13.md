@@ -24,21 +24,38 @@ First, copy the source files from lesson 5. We'll use a simple code base so that
 After copying the file, we'll update the `Cargo.toml` file to add a new dependency. Since we're loading image files we're going to use a crate for that instead of trying to write our own parser like we did with our `.obj` file loader.
 
 ```toml
-png = "0.16.8"
+png = "0.17.7"
 ```
 
 Lastly, we'll update the `vertex_buffer` variable to create a square instead of a triangle. The reasons for this will be clear in a bit.
 
 ```rust
-let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, [
-    Vertex { position: [-0.5, -0.5, -0.5], color: [1.0, 0.35, 0.137] }, // top left corner
-    Vertex { position: [-0.5, 0.5, -0.5], color: [1.0, 0.35, 0.137] }, // bottom left corner
-    Vertex { position: [0.5, -0.5, -0.5], color: [1.0, 0.35, 0.137] }, // top right corner
-
-    Vertex { position: [0.5, -0.5, -0.5], color: [1.0, 0.35, 0.137] }, // top right corner
-    Vertex { position: [-0.5, 0.5, -0.5], color: [1.0, 0.35, 0.137] }, // bottom left corner
-    Vertex { position: [0.5, 0.5, -0.5], color: [1.0, 0.35, 0.137] }, // bottom right corner
-].iter().cloned()).unwrap();
+let vertices = [
+    Vertex {
+        position: [-0.5, -0.5, -0.5],
+        color: [1.0, 0.35, 0.137],
+    }, // top left corner
+    Vertex {
+        position: [-0.5, 0.5, -0.5],
+        color: [1.0, 0.35, 0.137],
+    }, // bottom left corner
+    Vertex {
+        position: [0.5, -0.5, -0.5],
+        color: [1.0, 0.35, 0.137],
+    }, // top right corner
+    Vertex {
+        position: [0.5, -0.5, -0.5],
+        color: [1.0, 0.35, 0.137],
+    }, // top right corner
+    Vertex {
+        position: [-0.5, 0.5, -0.5],
+        color: [1.0, 0.35, 0.137],
+    }, // bottom left corner
+    Vertex {
+        position: [0.5, 0.5, -0.5],
+        color: [1.0, 0.35, 0.137],
+    }, // bottom right corner
+];
 ```
 
 if you run the program at this point you should see the following image:
@@ -92,15 +109,32 @@ vulkano::impl_vertex!(Vertex, position, uv);
 Next, we update our `vertex_buffer` to use the UV coordinates. This makes it pretty plain to see that the directions of the UV axis are the same as the XY axis in model space. The upper-left corner is `(0.0, 0.0)` and the lower-right corner is `(1.0, 1.0)` just as expected 
 
 ```rust
-let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, [
-    Vertex { position: [-0.5, -0.5, -0.5], uv: [0.0, 0.0] }, // top left corner
-    Vertex { position: [-0.5, 0.5, -0.5], uv: [0.0, 1.0] }, // bottom left corner
-    Vertex { position: [0.5, -0.5, -0.5], uv: [1.0, 0.0] }, // top right corner
-
-    Vertex { position: [0.5, -0.5, -0.5], uv: [1.0, 0.0] }, // top right corner
-    Vertex { position: [-0.5, 0.5, -0.5], uv: [0.0, 1.0] }, // bottom left corner
-    Vertex { position: [0.5, 0.5, -0.5], uv: [1.0, 1.0] }, // bottom right corner
-].iter().cloned()).unwrap();
+let vertices = [
+    Vertex {
+        position: [-0.5, -0.5, -0.5],
+        uv: [0.0, 0.0],
+    }, // top left corner
+    Vertex {
+        position: [-0.5, 0.5, -0.5],
+        uv: [0.0, 1.0],
+    }, // bottom left corner
+    Vertex {
+        position: [0.5, -0.5, -0.5],
+        uv: [1.0, 0.0],
+    }, // top right corner
+    Vertex {
+        position: [0.5, -0.5, -0.5],
+        uv: [1.0, 0.0],
+    }, // top right corner
+    Vertex {
+        position: [-0.5, 0.5, -0.5],
+        uv: [0.0, 1.0],
+    }, // bottom left corner
+    Vertex {
+        position: [0.5, 0.5, -0.5],
+        uv: [1.0, 1.0],
+    }, // bottom right corner
+];
 ```
 
 Lastly, let's create a new `textures` directory and add our texture there. We store texture locally as we will be loading the texture with a macro, same as our shaders.
@@ -118,13 +152,14 @@ src/
 The process of loading a texture can be a little verbose since it combines Rust-style file io and Vulkan. Let's look at the block of code and then look through it.
 
 ```rust
-let (texture, tex_future) = {
+// load the image data and dimensions before event loop
+let (image_data, image_dimensions) = {
     let png_bytes = include_bytes!("./textures/diamond.png").to_vec();
     let cursor = Cursor::new(png_bytes);
     let decoder = png::Decoder::new(cursor);
     let mut reader = decoder.read_info().unwrap();
     let info = reader.info();
-    let dimensions = ImageDimensions::Dim2d {
+    let image_dimensions = ImageDimensions::Dim2d {
         width: info.width,
         height: info.height,
         array_layers: 1,
@@ -139,16 +174,11 @@ let (texture, tex_future) = {
     };
     image_data.resize((info.width * info.height * depth) as usize, 0);
     reader.next_frame(&mut image_data).unwrap();
-    let (image, future) = ImmutableImage::from_iter(
-        image_data.iter().cloned(),
-        dimensions,
-        MipmapsCount::One,
-        Format::R8G8B8A8_SRGB,
-        queue.clone(),
-    )
-    .unwrap();
-    (ImageView::new_default(image).unwrap(), future)
+    (image_data, image_dimensions)
 };
+
+// then load it into a texture on first frame
+let mut texture: Option<Arc<ImageView<_>>> = None;
 ```
 
 let's go bit-by-bit
@@ -174,6 +204,16 @@ let info = reader.info();
 This gives us some information about the png image we've loaded as well as a new `Reader` that we can use to actually load the source bytes into a vector.
 
 ```rust
+let image_dimensions = ImageDimensions::Dim2d {
+    width: info.width,
+    height: info.height,
+    array_layers: 1,
+};
+```
+
+These are the image dimensions we'll pass along to Vulkan when we create the texture.
+
+```rust
 let mut image_data = Vec::new();
 let depth: u32 = match info.bit_depth {
     png::BitDepth::One => 1,
@@ -189,34 +229,37 @@ reader.next_frame(&mut image_data).unwrap();
 This is how we actually load the image into a Rust vector. First we declare an empty vector, then we resize the vector based on the image dimensions we've found with the `info` variable. The specific call to `reader.next_frame` is because a png file can have multiple "frames". We don't make use of that feature so we can ignore the complications that can come from that.
 
 ```rust
-let dimensions = ImageDimensions::Dim2d {
-    width: info.width,
-    height: info.height,
-    array_layers: 1,
-};
-let (image, future) = ImmutableImage::from_iter(
-    image_data.iter().cloned(),
-    dimensions,
-    MipmapsCount::One,
-    Format::R8G8B8A8_SRGB,
-    queue.clone(),
-)
-.unwrap();
-(ImageView::new_default(image).unwrap(), future)
+// then load it into a texture on first frame
+let mut texture: Option<Arc<ImageView<_>>> = None;
 ```
 
-The last part of this code block is where we bring Vulkan into it. We're seeing `ImmutableImage` for the first time here but I bet you can probably guess what it is. It's the brother type to `AttachmentImage` and `SwapchainImage` and is a data buffer type, it doesn't have to store literal image data but in this case that's exactly what we're doing right here. We can use an `ImmutableImage` here because we won't ever need to change the data we're storing in this `Image`. We don't strictly have to use it but it gives the Vulkan driver a hint about expected use that lets it do optimizations behind the scenes.
-
-This code returns two values `texture` and `tex_future`. `texture` is fairly self-explanatory, it's the `ImmutableImage` we just made. `tex_future` is a `Future` object and is a bit more interesting. Remember that Vulkan is _asynchronous_, so operations that take place on the GPU don't finish before the code on the CPU returns. As part of using `ImmutableImage` the data is going to be uploaded to the GPU and, as such, is going to be an asynchronous operation. We'll need to remember to handle this future before we try to use the data.  
+We create an Option that starts out as None, but later when we run the first frame, we'll load it into the GPU.  Starting with vulkano-0.32.0, loading textures into the GPU uses a command buffer, which will then be ordered relative to all of the other commands.  We could setup a temporary command buffer before the first frame just to load textures, but since we create a command buffer for each frame already, we'll just defer the loading until then.
 
 ```rust
-let mut previous_frame_end = Some(tex_future.boxed());
+// on first frame, load the image into a texture using the command buffer, before doing anything else
+let texture = texture.get_or_insert_with(|| {
+    let image = ImmutableImage::from_iter(
+        &memory_allocator,
+        image_data.iter().cloned(),
+        image_dimensions,
+        MipmapsCount::One,
+        Format::R8G8B8A8_SRGB,
+        &mut cmd_buffer_builder,
+    )
+    .unwrap();
+    ImageView::new_default(image).unwrap()
+});
 ```
-previously we set up an empty future since we had nothing we were waiting for at the start of the program. This is how we make sure that the texture upload process has completed.
+
+This should be run after setting up the `cmd_buffer_builder` in the per-frame loop.  Note that `get_or_insert_with` is a handy helper to either get the value of an `Option`, or run a closure to set the value and return it.  It's a handy Rust idiom to lazily initialize a value, which is exactly what we want to do to load our texture only on the first frame.
+
+We're seeing `ImmutableImage` for the first time here but I bet you can probably guess what it is. It's the brother type to `AttachmentImage` and `SwapchainImage` and is a data buffer type, it doesn't have to store literal image data but in this case that's exactly what we're doing right here. We can use an `ImmutableImage` here because we won't ever need to change the data we're storing in this `Image`. We don't strictly have to use it but it gives the Vulkan driver a hint about expected use that lets it do optimizations behind the scenes.
 
 #### The Sampler
 
 The following code is the only really new part of the lesson, creating the `Sampler`.
+
+The important thing to note about `Sampler`s is that they allow fine-grained interpolation of an image texture using floating-point values from 0.0 to 1.0 in multiple dimensions (usually called U and V for 2D textures). There is hardware acceleration built into the GPU designed for this purpose.  Think of a `Sampler` as a highly-configurable hardware-accelerated table lookup.
 
 ```rust
 let sampler = Sampler::new(
@@ -233,18 +276,19 @@ let sampler = Sampler::new(
 .unwrap();
 ```
 
-This is new but it follows the same pattern for Vulkano data before. Earlier, when we created an `ImmutableImage`, we uploaded the data; however, by itself Vulkan doesn't know how it's supposed to access that data. The `Sampler` is how we tell Vulkan how to access that data. There are a number of arguments but the only one I want to call out here is `SamplerAddressMode::Repeat`. This tells Vulkan what to do if it receives UV values that lie outside the valid range. In this case, we're telling Vulkan to just repeat the image as necessary.
+You can see that this follows the same pattern as other Vulkano features. Just creating an `ImmutableImage` provides the data to the GPU; however, by itself Vulkan doesn't know how it's supposed to access that data. The `Sampler` is how we tell Vulkan how to access and interpolate that image data. There are a number of arguments but the only one I want to call out here is `SamplerAddressMode::Repeat`. This tells Vulkan what to do if it receives UV values that lie outside the valid range. In this case, we're telling Vulkan to just repeat the image as necessary.
 
 #### Descriptor Set
 
 The descriptor set looks fairly similar to what we've seen before. We treat textures as a form of `uniform` so we use a new method, `image_view_sampler`, to add the texture and its sampler to the descriptor set.
 
 ```rust
-let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+let layout = pipeline.layout().set_layouts().get(0).unwrap();
 let set = PersistentDescriptorSet::new(
+    &descriptor_set_allocator,
     layout.clone(),
     [
-        WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer.clone()),
+        WriteDescriptorSet::buffer(0, uniform_subbuffer.clone()),
         WriteDescriptorSet::image_view_sampler(1, texture.clone(), sampler.clone()),
     ],
 )

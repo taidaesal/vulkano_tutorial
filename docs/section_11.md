@@ -150,12 +150,18 @@ pub struct System {
 impl System {
     pub fn new() -> System {
         let instance = {
-            let extensions = vulkano_win::required_extensions();
-            Instance::new(InstanceCreateInfo {
-                enabled_extensions: extensions,
-                max_api_version: Some(Version::V1_1),
-                ..Default::default()
-            })
+            let library = VulkanLibrary::new().unwrap();
+            let extensions = vulkano_win::required_extensions(&library);
+
+            Instance::new(
+                library,
+                InstanceCreateInfo {
+                    enabled_extensions: extensions,
+                    enumerate_portability: true, // required for MoltenVK on macOS
+                    max_api_version: Some(Version::V1_1),
+                    ..Default::default()
+                },
+            )
             .unwrap()
         };
 
@@ -195,28 +201,38 @@ impl System {
             .unwrap()
         };
 
-        let device_ext = DeviceExtensions {
+        let device_extensions = DeviceExtensions {
             khr_swapchain: true,
-            ..DeviceExtensions::none()
+            ..DeviceExtensions::empty()
         };
 
-        let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-            .filter(|&p| p.supported_extensions().is_superset_of(&device_ext))
+        let (physical_device, queue_family_index) = instance
+            .enumerate_physical_devices()
+            .unwrap()
+            .filter(|p| p.supported_extensions().contains(&device_extensions))
             .filter_map(|p| {
-                p.queue_families()
-                    .find(|&q| {
-                        q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false)
+                p.queue_family_properties()
+                    .iter()
+                    .enumerate()
+                    .position(|(i, q)| {
+                        // pick first queue_familiy_index that handles graphics and can draw on the surface created by winit
+                        q.queue_flags.graphics
+                            && p.surface_support(i as u32, &surface).unwrap_or(false)
                     })
-                    .map(|q| (p, q))
+                    .map(|i| (p, i as u32))
             })
-            .min_by_key(|(p, _)| match p.properties().device_type {
-                PhysicalDeviceType::DiscreteGpu => 0,
-                PhysicalDeviceType::IntegratedGpu => 1,
-                PhysicalDeviceType::VirtualGpu => 2,
-                PhysicalDeviceType::Cpu => 3,
-                PhysicalDeviceType::Other => 4,
+            .min_by_key(|(p, _)| {
+                // lower score for preferred device types
+                match p.properties().device_type {
+                    PhysicalDeviceType::DiscreteGpu => 0,
+                    PhysicalDeviceType::IntegratedGpu => 1,
+                    PhysicalDeviceType::VirtualGpu => 2,
+                    PhysicalDeviceType::Cpu => 3,
+                    PhysicalDeviceType::Other => 4,
+                    _ => 5,
+                }
             })
-            .unwrap();
+            .expect("No suitable physical device found");
 
         System{
             instance
@@ -225,11 +241,11 @@ impl System {
 }
 ```
 
-We don't need to store `physical_device` or `queue_family` because we won't be using outside of this initialization process.
+We don't need to store `physical_device` or `queue_family_index` because we won't be using them outside of this initialization process.
 
 #### Our Window
 
-Now we reach the first complication, what to do with our `Window` and related code. Most of the places we need to know about this information can safely be moved inside the `System` struct but our main program loop will still be inside `main.rs` and for that we need to know about the `EventsLoop`. We can solve this by creating our `EventsLoop` inside `main()` and passing it as an argument to `System::new()`
+Now we reach the first complication, what to do with our `Surface`, `Window`, and related code. Most of the places we need to know about this information can safely be moved inside the `System` struct but our main program loop will still be inside `main.rs` and for that we need to know about the `EventLoop`. We can solve this by creating our `EventLoop` inside `main()` and passing it as an argument to `System::new()`
 
 `main.rs`
 ```rust
@@ -259,14 +275,16 @@ We have created our `EventLoop` object and created an empty main program loop th
 ```rust
 pub struct System {
     instance: Arc<Instance>,
-    surface: Arc<Surface<Window>>,
+    surface: Arc<Surface>,
 }
 
 impl System {
-    pub fn new(event_loop: &EventLoop) -> System {
+    pub fn new(event_loop: &EventLoop<()>) -> System {
         // ...
 
-        let surface = WindowBuilder::new().build_vk_surface(&event_loop, instance.clone()).unwrap();
+        let surface = WindowBuilder::new()
+            .build_vk_surface(event_loop, instance.clone())
+            .unwrap();
 
         System{
             // ...
@@ -289,19 +307,20 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(event_loop: &EventLoop) -> System {
+    pub fn new(event_loop: &EventLoop<()>) -> System {
         // ...
         let (device, mut queues) = Device::new(
             physical_device,
             DeviceCreateInfo {
-                enabled_extensions: physical_device.required_extensions().union(&device_ext),
-
-                queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+                enabled_extensions: device_extensions,
+                queue_create_infos: vec![QueueCreateInfo {
+                    queue_family_index,
+                    ..Default::default()
+                }],
                 ..Default::default()
             },
         )
         .unwrap();
-
 
         let queue = queues.next().unwrap();
         // ...
@@ -343,7 +362,7 @@ impl VP {
 }
 
 impl System {
-    pub fn new(event_loop: &EventLoop) -> System {
+    pub fn new(event_loop: &EventLoop<()>) -> System {
         // ...
         let mut vp = VP::new();
         
@@ -361,34 +380,86 @@ Now let's add the swapchain proper. We need to save `swapchain` and `images`, bo
 ```rust
 pub struct System {
     // ...
-    swapchain: Arc<Swapchain<Window>>,
+    swapchain: Arc<Swapchain>,
 }
 
 impl System {
-    pub fn new(event_loop: &EventLoop) -> System {
+    pub fn new(event_loop: &EventLoop<()>) -> System {
         // ...
 
         let (swapchain, images) = {
-            let caps = surface.capabilities(physical).unwrap();
+            let caps = device
+                .physical_device()
+                .surface_capabilities(&surface, Default::default())
+                .unwrap();
+
             let usage = caps.supported_usage_flags;
             let alpha = caps.supported_composite_alpha.iter().next().unwrap();
-            let format = caps.supported_formats[0].0;
-            let dimensions: [u32; 2] = surface.window().inner_size().into();
 
-            Swapchain::start(device.clone(), surface.clone())
-                .num_images(caps.min_image_count)
-                .format(format)
-                .dimensions(dimensions)
-                .usage(usage)
-                .sharing_mode(&queue)
-                .composite_alpha(alpha)
-                .build()
-                .unwrap()
+            let image_format = Some(
+                device
+                    .physical_device()
+                    .surface_formats(&surface, Default::default())
+                    .unwrap()[0]
+                    .0,
+            );
+
+            let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+            let image_extent: [u32; 2] = window.inner_size().into();
+
+            let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
+            vp.projection = perspective(aspect_ratio, half_pi(), 0.01, 100.0);
+
+            Swapchain::new(
+                device.clone(),
+                surface.clone(),
+                SwapchainCreateInfo {
+                    min_image_count: caps.min_image_count,
+                    image_format,
+                    image_extent,
+                    image_usage: usage,
+                    composite_alpha: alpha,
+                    ..Default::default()
+                },
+            )
+            .unwrap()
         };
 
         System{
             // ...
             swapchain,
+        }
+    }
+}
+```
+
+#### Memory Allocators
+
+Pretty straightforward.  The only interesting thing is that we need to wrap the `StandardMemoryAllocator` in an `Arc`.
+
+`system.rs`
+```rust
+pub struct System {
+    // ...
+    memory_allocator: Arc<StandardMemoryAllocator>,
+    descriptor_set_allocator: StandardDescriptorSetAllocator,
+    command_buffer_allocator: StandardCommandBufferAllocator,
+}
+
+impl System {
+    pub fn new(event_loop: &EventLoop<()>) -> System {
+        // ...
+
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+        let command_buffer_allocator =
+            StandardCommandBufferAllocator::new(device.clone(), Default::default());
+
+        System{
+            // ...
+            memory_allocator,
+            descriptor_set_allocator,
+            command_buffer_allocator,
         }
     }
 }
@@ -477,22 +548,42 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(event_loop: &EventLoop) -> System {
+    pub fn new(event_loop: &EventLoop<()>) -> System {
         // ...
 
-        let mut vp_buffer = CpuAccessibleBuffer::from_data(
-            device.clone(),
-            BufferUsage::all(),
+        let vp_buffer = CpuAccessibleBuffer::from_data(
+            &memory_allocator,
+            BufferUsage {
+                uniform_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
             deferred_vert::ty::VP_Data {
                 view: vp.view.into(),
                 projection: vp.projection.into(),
-            }
-        ).unwrap();
+            },
+        )
+        .unwrap();
 
-        let model_uniform_buffer = CpuBufferPool::<deferred_vert::ty::Model_Data>::uniform_buffer(device.clone());
-        let ambient_buffer = CpuBufferPool::<ambient_frag::ty::Ambient_Data>::uniform_buffer(device.clone());
-        let directional_buffer = CpuBufferPool::<directional_frag::ty::Directional_Light_Data>::uniform_buffer(device.clone());
+        let model_uniform_buffer: CpuBufferPool<deferred_vert::ty::Model_Data> =
+            CpuBufferPool::uniform_buffer(memory_allocator.clone());
+
+        let ambient_buffer = CpuAccessibleBuffer::from_data(
+            &memory_allocator,
+            BufferUsage {
+                uniform_buffer: true,
+                ..BufferUsage::empty()
+            },
+            false,
+            ambient_frag::ty::Ambient_Data {
+                color: [1.0, 1.0, 1.0],
+                intensity: 0.1,
+            },
+        )
+        .unwrap();
+
+        let directional_buffer: CpuBufferPool<directional_frag::ty::Directional_Light_Data> =
+            CpuBufferPool::uniform_buffer(memory_allocator.clone());
 
         System{
             // ...
@@ -517,7 +608,7 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(event_loop: &EventLoop) -> System {
+    pub fn new(event_loop: &EventLoop<()>) -> System {
         // ...
 
         let render_pass = vulkano::ordered_passes_renderpass!(device.clone(),
@@ -591,7 +682,7 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(event_loop: &EventLoop) -> System {
+    pub fn new(event_loop: &EventLoop<()>) -> System {
         // ...
 
         let deferred_pipeline = GraphicsPipeline::start()
@@ -669,24 +760,26 @@ We're almost done, time to just wrap up with a few bits and pieces that don't re
 pub struct System {
     // ...
     dummy_verts: Arc<CpuAccessibleBuffer<[DummyVertex]>>,
+    framebuffers: Vec<Arc<Framebuffer>>,
+    color_buffer: Arc<ImageView<AttachmentImage>>,
+    normal_buffer: Arc<ImageView<AttachmentImage>>,
+    vp_set: Arc<PersistentDescriptorSet>,
     viewport: Viewport,
-    framebuffers: Vec<Arc<dyn FramebufferAbstract>>,
-    color_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
-    normal_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
-    previous_frame_end: Box<dyn GpuFuture>,
-    vp_set: Arc<dyn DescriptorSet + Send + Sync>,
 }
 
 impl System {
     pub fn new(event_loop: &EventLoop) -> System {
         // ...
-
         let dummy_verts = CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::all(),
+            &memory_allocator,
+            BufferUsage {
+                vertex_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
-            DummyVertex::list().iter().cloned()
-        ).unwrap();
+            DummyVertex::list().iter().cloned(),
+        )
+        .unwrap();
 
         let mut viewport = Viewport {
             origin: [0.0, 0.0],
@@ -695,38 +788,34 @@ impl System {
         };
 
         let (framebuffers, color_buffer, normal_buffer) = System::window_size_dependent_setup(
-            device.clone(),
+            &memory_allocator,
             &images,
             render_pass.clone(),
             &mut viewport,
         );
 
-        let vp_layout = deferred_pipeline
-            .layout()
-            .descriptor_set_layouts()
-            .get(0)
-            .unwrap();
+        let vp_layout = deferred_pipeline.layout().set_layouts().get(0).unwrap();
         let vp_set = PersistentDescriptorSet::new(
+            &descriptor_set_allocator,
             vp_layout.clone(),
             [WriteDescriptorSet::buffer(0, vp_buffer.clone())],
         )
         .unwrap();
 
-
         System{
             // ...
             dummy_verts,
-            viewport,
             framebuffers,
             color_buffer,
             normal_buffer,
             vp_set,
+            viewport,
         }
     }
 
     fn window_size_dependent_setup(
-        device: Arc<Device>,
-        images: &[Arc<SwapchainImage<Window>>],
+        allocator: &StandardMemoryAllocator,
+        images: &[Arc<SwapchainImage>],
         render_pass: Arc<RenderPass>,
         viewport: &mut Viewport,
     ) -> (
@@ -737,18 +826,24 @@ impl System {
         let dimensions = images[0].dimensions().width_height();
         viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
-        let color_buffer = ImageView::new(
+        let depth_buffer = ImageView::new_default(
+            AttachmentImage::transient(allocator, dimensions, Format::D16_UNORM).unwrap(),
+        )
+        .unwrap();
+
+        let color_buffer = ImageView::new_default(
             AttachmentImage::transient_input_attachment(
-                device.clone(),
+                allocator,
                 dimensions,
                 Format::A2B10G10R10_UNORM_PACK32,
             )
             .unwrap(),
         )
         .unwrap();
-        let normal_buffer = ImageView::new(
+
+        let normal_buffer = ImageView::new_default(
             AttachmentImage::transient_input_attachment(
-                device.clone(),
+                allocator,
                 dimensions,
                 Format::R16G16B16A16_SFLOAT,
             )
@@ -756,59 +851,57 @@ impl System {
         )
         .unwrap();
 
-        (
-            images
-                .iter()
-                .map(|image| {
-                    let view = ImageView::new(image.clone()).unwrap();
-                    let depth_buffer = ImageView::new(
-                        AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM)
-                            .unwrap(),
-                    )
-                    .unwrap();
-                    Framebuffer::start(render_pass.clone())
-                        .add(view)
-                        .unwrap()
-                        .add(color_buffer.clone())
-                        .unwrap()
-                        .add(normal_buffer.clone())
-                        .unwrap()
-                        .add(depth_buffer.clone())
-                        .unwrap()
-                        .build()
-                        .unwrap()
-                })
-                .collect::<Vec<_>>(),
-            color_buffer.clone(),
-            normal_buffer.clone(),
-        )
+        let framebuffers = images
+            .iter()
+            .map(|image| {
+                let view = ImageView::new_default(image.clone()).unwrap();
+                Framebuffer::new(
+                    render_pass.clone(),
+                    FramebufferCreateInfo {
+                        attachments: vec![
+                            view,
+                            color_buffer.clone(),
+                            normal_buffer.clone(),
+                            depth_buffer.clone(),
+                        ],
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+
+        (framebuffers, color_buffer.clone(), normal_buffer.clone())
     }
 
     pub fn set_view(&mut self, view: &TMat4<f32>) {
         self.vp.view = view.clone();
         self.vp_buffer = CpuAccessibleBuffer::from_data(
-            self.device.clone(),
-            BufferUsage::all(),
+            &self.memory_allocator,
+            BufferUsage {
+                uniform_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
             deferred_vert::ty::VP_Data {
                 view: self.vp.view.into(),
                 projection: self.vp.projection.into(),
-            }
-        ).unwrap();
+            },
+        )
+        .unwrap();
 
         let vp_layout = self
             .deferred_pipeline
             .layout()
-            .descriptor_set_layouts()
+            .set_layouts()
             .get(0)
             .unwrap();
         self.vp_set = PersistentDescriptorSet::new(
+            &self.descriptor_set_allocator,
             vp_layout.clone(),
             [WriteDescriptorSet::buffer(0, self.vp_buffer.clone())],
         )
         .unwrap();
-
-        self.render_stage = RenderStage::Stopped;
     }
 }
 ```
@@ -842,7 +935,7 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(event_loop: &EventLoop) -> System {
+    pub fn new(event_loop: &EventLoop<()>) -> System {
         // ...
         let render_stage = RenderStage::Stopped;
         System{
@@ -864,65 +957,70 @@ Now let's create the method we can call to start a single render operation. The 
 
 pub struct System {
     // ...
-    commands: Option<
-        AutoCommandBufferBuilder<
-            PrimaryAutoCommandBuffer<StandardCommandPoolAlloc>,
-            StandardCommandPoolBuilder,
-        >,
-    >,
-    img_index: usize,
-    acquire_future: Option<SwapchainAcquireFuture<Window>>,
+    commands: Option<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>>,
+    image_index: u32,
+    acquire_future: Option<SwapchainAcquireFuture>,
 }
 
 impl System {
-    pub fn new(event_loop: &EventLoop) -> System {
+    pub fn new(event_loop: &EventLoop<()>) -> System {
         // ...
         let commands = None;
-        let img_index = 0;
+        let image_index = 0;
         let acquire_future = None;
 
         System{
             // ...
             commands,
-            img_index,
+            image_index,
             acquire_future,
         }   
     }
 
     pub fn start(&mut self) {
-        let (img_index, suboptimal, acquire_future) = match swapchain::acquire_next_image(self.swapchain.clone(), None) {
-            Ok(r) => r,
-            Err(AcquireError::OutOfDate) => {
-                self.recreate_swapchain();
-                return;
-            },
-            Err(err) => panic!("{:?}", err)
-        };
+        let (image_index, suboptimal, acquire_future) =
+            match swapchain::acquire_next_image(self.swapchain.clone(), None) {
+                Ok(r) => r,
+                Err(AcquireError::OutOfDate) => {
+                    self.recreate_swapchain();
+                    return;
+                }
+                Err(err) => panic!("{:?}", err),
+            };
 
         if suboptimal {
-          self.recreate_swapchain();
-          return;
+            self.recreate_swapchain();
+            return;
         }
 
-        let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), 1f32.into()];
+        let clear_values = vec![
+            Some([0.0, 0.0, 0.0, 1.0].into()),
+            Some([0.0, 0.0, 0.0, 1.0].into()),
+            Some([0.0, 0.0, 0.0, 1.0].into()),
+            Some(1.0.into()),
+        ];
 
         let mut commands = AutoCommandBufferBuilder::primary(
-            self.device.clone(),
-            self.queue.family(),
+            &self.command_buffer_allocator,
+            self.queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
+
         commands
             .begin_render_pass(
-                self.framebuffers[img_index].clone(),
+                RenderPassBeginInfo {
+                    clear_values,
+                    ..RenderPassBeginInfo::framebuffer(
+                        self.framebuffers[image_index as usize].clone(),
+                    )
+                },
                 SubpassContents::Inline,
-                clear_values,
             )
             .unwrap();
+
         self.commands = Some(commands);
-
-        self.img_index = img_index;
-
+        self.image_index = image_index;
         self.acquire_future = Some(acquire_future);
     }
 }
@@ -968,16 +1066,15 @@ Now that we've added the `start` method to start a render operation let's skip a
 `system.rs`
 ```rust
 impl System {
-    pub fn finish(&mut self, previous_frame_end: &mut Box<dyn GpuFuture>) {
+    pub fn finish(&mut self, previous_frame_end: &mut Option<Box<dyn GpuFuture>>) {
         match self.render_stage {
-            RenderStage::Directional => {
-            },
+            RenderStage::Directional => {}
             RenderStage::NeedsRedraw => {
                 self.recreate_swapchain();
                 self.commands = None;
                 self.render_stage = RenderStage::Stopped;
                 return;
-            },
+            }
             _ => {
                 self.commands = None;
                 self.render_stage = RenderStage::Stopped;
@@ -991,13 +1088,24 @@ impl System {
 
         let af = self.acquire_future.take().unwrap();
 
-        let mut local_future:Option<Box<dyn GpuFuture>> = Some(Box::new(sync::now(self.device.clone())) as Box<dyn GpuFuture>);
+        let mut local_future: Option<Box<dyn GpuFuture>> =
+            Some(Box::new(sync::now(self.device.clone())) as Box<dyn GpuFuture>);
 
         mem::swap(&mut local_future, previous_frame_end);
 
-        let future = local_future.take().unwrap().join(af)
-            .then_execute(self.queue.clone(), command_buffer).unwrap()
-            .then_swapchain_present(self.queue.clone(), self.swapchain.clone(), self.img_index)
+        let future = local_future
+            .take()
+            .unwrap()
+            .join(af)
+            .then_execute(self.queue.clone(), command_buffer)
+            .unwrap()
+            .then_swapchain_present(
+                self.queue.clone(),
+                SwapchainPresentInfo::swapchain_image_index(
+                    self.swapchain.clone(),
+                    self.image_index,
+                ),
+            )
             .then_signal_fence_and_flush();
 
         match future {
@@ -1047,7 +1155,9 @@ It might seem like we're "cheating" the compiler here because we're getting some
 Our second example might make this more clear.
 
 ```rust
-let mut local_future:Option<Box<dyn GpuFuture>> = Some(Box::new(sync::now(self.device.clone())) as Box<dyn GpuFuture>);
+let mut local_future: Option<Box<dyn GpuFuture>> =
+    Some(Box::new(sync::now(self.device.clone())) as Box<dyn GpuFuture>);
+
 mem::swap(&mut local_future, previous_frame_end);
 ```
 
@@ -1064,14 +1174,13 @@ Now let's make a method that lets us add a model to our rendered scene. This wil
 impl System {
     pub fn geometry(&mut self, model: &mut Model) {
         match self.render_stage {
-            RenderStage::Deferred => {
-            },
+            RenderStage::Deferred => {}
             RenderStage::NeedsRedraw => {
                 self.recreate_swapchain();
                 self.render_stage = RenderStage::Stopped;
                 self.commands = None;
                 return;
-            },
+            }
             _ => {
                 self.render_stage = RenderStage::Stopped;
                 self.commands = None;
@@ -1079,7 +1188,7 @@ impl System {
             }
         }
 
-        let model_uniform_subbuffer = {
+        let model_subbuffer = {
             let (model_mat, normal_mat) = model.model_matrices();
 
             let uniform_data = deferred_vert::ty::Model_Data {
@@ -1087,32 +1196,36 @@ impl System {
                 normals: normal_mat.into(),
             };
 
-            self.model_uniform_buffer.next(uniform_data).unwrap()
+            self.model_uniform_buffer.from_data(uniform_data).unwrap()
         };
 
-        let deferred_layout_model = self
+        let model_layout = self
             .deferred_pipeline
             .layout()
-            .descriptor_set_layouts()
+            .set_layouts()
             .get(1)
             .unwrap();
         let model_set = PersistentDescriptorSet::new(
-            deferred_layout_model.clone(),
-            [WriteDescriptorSet::buffer(
-                0,
-                model_uniform_subbuffer.clone(),
-            )],
+            &self.descriptor_set_allocator,
+            model_layout.clone(),
+            [WriteDescriptorSet::buffer(0, model_subbuffer.clone())],
         )
         .unwrap();
 
-        let vertex_buffer:Arc<dyn BufferAccess + Send + Sync> = CpuAccessibleBuffer::from_iter(
-            self.device.clone(),
-            BufferUsage::all(),
+        let vertex_buffer = CpuAccessibleBuffer::from_iter(
+            &self.memory_allocator,
+            BufferUsage {
+                vertex_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
-            model.data().iter().cloned()).unwrap();
+            model.data().iter().cloned(),
+        )
+        .unwrap();
 
-        let mut commands = self.commands.take().unwrap();
-        commands
+        self.commands
+            .as_mut()
+            .unwrap()
             .set_viewport(0, [self.viewport.clone()])
             .bind_pipeline_graphics(self.deferred_pipeline.clone())
             .bind_descriptor_sets(
@@ -1124,14 +1237,13 @@ impl System {
             .bind_vertex_buffers(0, vertex_buffer.clone())
             .draw(vertex_buffer.len() as u32, 1, 0, 0)
             .unwrap();
-        self.commands = Some(commands);
     }
 }
 ```
 
 For the most part this looks like the code we had in previous lessons, just updated to use `self.` for fields like `device` or `deferred_pipeline` but what's going on with our use of `self.commands`?
 
-The first thing you can see is that we use `.take()` as discussed in the last section. Remember also that we need to re-assign our command buffer to `self.commands` because calling `.take()` changes the value stored in `self.commands` to `None`. If we forget to re-assign the data we'll lose all our changes!
+The first thing you can see is that we use `commands.as_mut()` to borrow the mutable object out of an `Option`.  At the end of this statement, it will be put back.  We could have used `take()` as discussed in the last section, but we'd have to remember to re-assign the command buffer back to `self.commands` because calling `.take()` changes the value stored in `self.commands` to `None`. If we forget to re-assign the data we'll lose all our changes!  Using `as_mut()` on an `Option` is a nice way to effectively do the same thing in a more elegant way.
 
 #### Ambient Light
 
@@ -1142,16 +1254,17 @@ First, let's add a method that lets our users change the data we store in our am
 `system.rs`
 ```rust
 impl System {
-    pub fn set_ambient(&mut self, color: [f32;3], intensity: f32) {
+    pub fn set_ambient(&mut self, color: [f32; 3], intensity: f32) {
         self.ambient_buffer = CpuAccessibleBuffer::from_data(
-            self.device.clone(),
-            BufferUsage::all(),
-            self,
-            ambient_frag::ty::Ambient_Data {
-                color,
-                intensity
-            }
-        ).unwrap();
+            &self.memory_allocator,
+            BufferUsage {
+                uniform_buffer: true,
+                ..BufferUsage::empty()
+            },
+            false,
+            ambient_frag::ty::Ambient_Data { color, intensity },
+        )
+        .unwrap();
     }
 }
 ```
@@ -1195,13 +1308,9 @@ impl System {
     pub fn ambient(&mut self) {
         // ...
 
-        let ambient_layout = self
-            .ambient_pipeline
-            .layout()
-            .descriptor_set_layouts()
-            .get(0)
-            .unwrap();
+        let ambient_layout = self.ambient_pipeline.layout().set_layouts().get(0).unwrap();
         let ambient_set = PersistentDescriptorSet::new(
+            &self.descriptor_set_allocator,
             ambient_layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, self.color_buffer.clone()),
@@ -1210,8 +1319,9 @@ impl System {
         )
         .unwrap();
 
-        let mut commands = self.commands.take().unwrap();
-        commands
+        self.commands
+            .as_mut()
+            .unwrap()
             .next_subpass(SubpassContents::Inline)
             .unwrap()
             .bind_pipeline_graphics(self.ambient_pipeline.clone())
@@ -1225,7 +1335,6 @@ impl System {
             .bind_vertex_buffers(0, self.dummy_verts.clone())
             .draw(self.dummy_verts.len() as u32, 1, 0, 0)
             .unwrap();
-        self.commands = Some(commands);
     }
 }
 ```
@@ -1243,15 +1352,14 @@ impl System {
         match self.render_stage {
             RenderStage::Ambient => {
                 self.render_stage = RenderStage::Directional;
-            },
-            RenderStage::Directional => {
             }
+            RenderStage::Directional => {}
             RenderStage::NeedsRedraw => {
                 self.recreate_swapchain();
                 self.commands = None;
                 self.render_stage = RenderStage::Stopped;
                 return;
-            },
+            }
             _ => {
                 self.commands = None;
                 self.render_stage = RenderStage::Stopped;
@@ -1259,27 +1367,29 @@ impl System {
             }
         }
 
-        let directional_uniform_subbuffer = self.generate_directional_buffer(&self.directional_buffer, &directional_light);
+        let directional_subbuffer =
+            self.generate_directional_buffer(&self.directional_buffer, &directional_light);
 
         let directional_layout = self
             .directional_pipeline
             .layout()
-            .descriptor_set_layouts()
+            .set_layouts()
             .get(0)
             .unwrap();
         let directional_set = PersistentDescriptorSet::new(
+            &self.descriptor_set_allocator,
             directional_layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, self.color_buffer.clone()),
                 WriteDescriptorSet::image_view(1, self.normal_buffer.clone()),
-                WriteDescriptorSet::buffer(2, directional_uniform_subbuffer.clone()),
+                WriteDescriptorSet::buffer(2, directional_subbuffer.clone()),
             ],
         )
         .unwrap();
 
-
-        let mut commands = self.commands.take().unwrap();
-        commands
+        self.commands
+            .as_mut()
+            .unwrap()
             .set_viewport(0, [self.viewport.clone()])
             .bind_pipeline_graphics(self.directional_pipeline.clone())
             .bind_vertex_buffers(0, self.dummy_verts.clone())
@@ -1291,7 +1401,6 @@ impl System {
             )
             .draw(self.dummy_verts.len() as u32, 1, 0, 0)
             .unwrap();
-        self.commands = Some(commands);
     }
 }
 ```
@@ -1305,38 +1414,52 @@ And that just about does it! After a very long lesson we're ready to take a look
 `main.rs`
 ```rust
 fn main() {
-    let mut events_loop = EventsLoop::new();
-    let mut system = System::new(&mut events_loop).unwrap();
+    let event_loop = EventLoop::new();
+    let mut system = System::new(&event_loop);
 
-    let mut previous_frame_end:Box<dyn GpuFuture> = Box::new(sync::now(system.device.clone()));
+    system.set_view(&look_at(
+        &vec3(0.0, 0.0, 0.1),
+        &vec3(0.0, 0.0, 0.0),
+        &vec3(0.0, 1.0, 0.0),
+    ));
 
     let mut teapot = Model::new("data/models/teapot.obj").build();
-    teapot.translate(vec3(0.0, 0.0, -3.5));
+    teapot.translate(vec3(-5.0, 2.0, -8.0));
 
-    system.set_view(&look_at(&vec3(0.0, 0.0, 0.01), &vec3(0.0, 0.0, 0.0), &vec3(0.0, -1.0, 0.0)));
+    let directional_light = DirectionalLight::new([-4.0, -4.0, 0.0, -2.0], [1.0, 0.0, 0.0]);
 
-    let directional_light = DirectionalLight::new([-4.0, -4.0, 0.0, 1.0], [1.0, 1.0, 1.0]);
+    let mut previous_frame_end =
+        Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
 
-    event_loop.run(move |event, _, control_flow| {
-        match event {
-            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
-                *control_flow = ControlFlow::Exit;
-            },
-            Event::WindowEvent { event: WindowEvent::Resized(_), .. } => {
-                system.recreate_swapchain();
-            },
-            Event::RedrawEventsCleared => {
-                previous_frame_end.as_mut().take().unwrap().cleanup_finished();
+    event_loop.run(move |event, _, control_flow| match event {
+        Event::WindowEvent {
+            event: WindowEvent::CloseRequested,
+            ..
+        } => {
+            *control_flow = ControlFlow::Exit;
+        }
+        Event::WindowEvent {
+            event: WindowEvent::Resized(_),
+            ..
+        } => {
+            system.recreate_swapchain();
+        }
+        Event::RedrawEventsCleared => {
+            previous_frame_end
+                .as_mut()
+                .take()
+                .unwrap()
+                .cleanup_finished();
 
-        system.start();
-        system.geometry(&mut teapot);
-        system.ambient();
-        system.directional(&directional_light);
-        system.finish(&mut previous_frame_end);
-      },
-      _ => ()
-    }
-  });
+
+            system.start();
+            system.geometry(&mut teapot);
+            system.ambient();
+            system.directional(&directional_light);
+            system.finish(&mut previous_frame_end);
+        }
+        _ => (),
+    });
 }
 ```
 
@@ -1360,15 +1483,17 @@ fn main() {
     let event_loop = EventLoop::new();
     let mut system = System::new(&event_loop);
 
-    system.set_view(&look_at(&vec3(0.0, 0.0, 0.01), &vec3(0.0, 0.0, 0.0), &vec3(0.0, -1.0, 0.0)));
-
-    let mut previous_frame_end = Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
+    system.set_view(&look_at(
+        &vec3(0.0, 0.0, 0.1),
+        &vec3(0.0, 0.0, 0.0),
+        &vec3(0.0, 1.0, 0.0),
+    ));
 
     let mut teapot = Model::new("data/models/teapot.obj").build();
-    teapot.translate(vec3(-5.0, 2.0, -5.0));
+    teapot.translate(vec3(-5.0, 2.0, -8.0));
 
     let mut suzanne = Model::new("data/models/suzanne.obj").build();
-    suzanne.translate(vec3(5.0, 2.0, -5.0));
+    suzanne.translate(vec3(5.0, 2.0, -6.0));
 
     let mut torus = Model::new("data/models/torus.obj").build();
     torus.translate(vec3(0.0, -2.0, -5.0));
@@ -1379,47 +1504,59 @@ fn main() {
 
     let rotation_start = Instant::now();
 
-    event_loop.run(move |event, _, control_flow| {
-        match event {
-            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
-                *control_flow = ControlFlow::Exit;
-            },
-            Event::WindowEvent { event: WindowEvent::Resized(_), .. } => {
-                system.recreate_swapchain();
-            },
-            Event::RedrawEventsCleared => {
-                previous_frame_end.as_mut().take().unwrap().cleanup_finished();
+    let mut previous_frame_end =
+        Some(Box::new(sync::now(system.device.clone())) as Box<dyn GpuFuture>);
 
-                let elapsed = rotation_start.elapsed().as_secs() as f64 + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
-                let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
-
-                teapot.zero_rotation();
-                teapot.rotate(elapsed_as_radians as f32 * 50.0, vec3(0.0, 0.0, 1.0));
-                teapot.rotate(elapsed_as_radians as f32 * 30.0, vec3(0.0, 1.0, 0.0));
-                teapot.rotate(elapsed_as_radians as f32 * 20.0, vec3(1.0, 0.0, 0.0));
-
-                suzanne.zero_rotation();
-                suzanne.rotate(elapsed_as_radians as f32 * 25.0, vec3(0.0, 0.0, 1.0));
-                suzanne.rotate(elapsed_as_radians as f32 * 10.0, vec3(0.0, 1.0, 0.0));
-                suzanne.rotate(elapsed_as_radians as f32 * 60.0, vec3(1.0, 0.0, 0.0));
-
-                torus.zero_rotation();
-                torus.rotate(elapsed_as_radians as f32 * 5.0, vec3(0.0, 0.0, 1.0));
-                torus.rotate(elapsed_as_radians as f32 * 45.0, vec3(0.0, 1.0, 0.0));
-                torus.rotate(elapsed_as_radians as f32 * 12.0, vec3(1.0, 0.0, 0.0));
-
-                system.start();
-                system.geometry(&mut teapot);
-                system.geometry(&mut suzanne);
-                system.geometry(&mut torus);
-                system.ambient();
-                system.directional(&directional_light_r);
-                system.directional(&directional_light_g);
-                system.directional(&directional_light_b);
-                system.finish(&mut previous_frame_end);
-            },
-            _ => ()
+    event_loop.run(move |event, _, control_flow| match event {
+        Event::WindowEvent {
+            event: WindowEvent::CloseRequested,
+            ..
+        } => {
+            *control_flow = ControlFlow::Exit;
         }
+        Event::WindowEvent {
+            event: WindowEvent::Resized(_),
+            ..
+        } => {
+            system.recreate_swapchain();
+        }
+        Event::RedrawEventsCleared => {
+            previous_frame_end
+                .as_mut()
+                .take()
+                .unwrap()
+                .cleanup_finished();
+
+            let elapsed = rotation_start.elapsed().as_secs() as f64
+                + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
+            let elapsed_as_radians = elapsed * pi::<f64>() / 180.0;
+
+            teapot.zero_rotation();
+            teapot.rotate(elapsed_as_radians as f32 * 50.0, vec3(0.0, 0.0, 1.0));
+            teapot.rotate(elapsed_as_radians as f32 * 30.0, vec3(0.0, 1.0, 0.0));
+            teapot.rotate(elapsed_as_radians as f32 * 20.0, vec3(1.0, 0.0, 0.0));
+
+            suzanne.zero_rotation();
+            suzanne.rotate(elapsed_as_radians as f32 * 25.0, vec3(0.0, 0.0, 1.0));
+            suzanne.rotate(elapsed_as_radians as f32 * 10.0, vec3(0.0, 1.0, 0.0));
+            suzanne.rotate(elapsed_as_radians as f32 * 60.0, vec3(1.0, 0.0, 0.0));
+
+            torus.zero_rotation();
+            torus.rotate(elapsed_as_radians as f32 * 5.0, vec3(0.0, 0.0, 1.0));
+            torus.rotate(elapsed_as_radians as f32 * 45.0, vec3(0.0, 1.0, 0.0));
+            torus.rotate(elapsed_as_radians as f32 * 12.0, vec3(1.0, 0.0, 0.0));
+
+            system.start();
+            system.geometry(&mut teapot);
+            system.geometry(&mut suzanne);
+            system.geometry(&mut torus);
+            system.ambient();
+            system.directional(&directional_light_r);
+            system.directional(&directional_light_g);
+            system.directional(&directional_light_b);
+            system.finish(&mut previous_frame_end);
+        }
+        _ => (),
     });
 }
 ```
