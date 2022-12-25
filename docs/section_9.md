@@ -61,7 +61,7 @@ I created a new module named `obj_loader` where I added code related to loading 
 
 #### Vertices
 
-Like I mentioned in the other section, I've created new vertex types and moved them to `obj_vector`.
+Like I mentioned in the other section, I've created new vertex types and moved them to `obj_loader`.
 
 For the purpose of this lesson, we'll be using a type named `NormalVertex`. This is the same as the `Vertex` type we used in the last lesson, just with a more descriptive name. So go through your code and rename instances of `Vertex` with `NormalVertex`.
 

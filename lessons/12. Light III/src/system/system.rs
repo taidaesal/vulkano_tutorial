@@ -749,7 +749,7 @@ impl System {
         pool.from_data(uniform_data).unwrap()
     }
 
-    pub fn geometry(&mut self, model: &mut Model) {
+    pub fn geometry(&mut self, model: &Model) {
         match self.render_stage {
             RenderStage::Deferred => {}
             RenderStage::NeedsRedraw => {
