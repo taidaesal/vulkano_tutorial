@@ -5,7 +5,7 @@ description: Overview of the topic of Vulkan, Rust, and Vulkano
 next_link: "./section_1.html"
 ---
 
-# Into To Vulkan
+# Intro To Vulkan
 ##### What is this?
 
 This is a set of lessons intending to walk the reader through the process of learning the basics of Vulkan as used in the Vulkano Rust crate. We'll start with opening your first window and move to creating a toy rendering system that can be used to render simple scenes. In the process, we'll introduce most of the core ideas of Vulkan as well as the most common mechanisms of manipulating data within it. The goal of this series is not to turn you into an expert, but to make Vulkan accessible and equip you with enough knowledge that you can experiment and research on your own.
