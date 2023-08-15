@@ -534,6 +534,7 @@ layout(location = 0) out vec4 f_color;
 
 void main() {
     f_color = vec4(subpassLoad(u_color).rgb, 1.0);
+    vec3 unused = subpassLoad(normal).rgb; // TODO: Replace when lighting code is implemented.
 }
 ```
 This shader is shorter than the one from the first pass but it's still doing something we haven't seen before now.
@@ -546,9 +547,11 @@ The `subpassInput` keyword is actually our data type. Remember that there are do
 
 The `layout` section looks mostly similar to other uniform inputs we've seen before but it does have a new argument, `input_attachment_index`. Unlike `binding` the value of `input_attachment_index` depends on the order the attachments are given in the *renderpass*, not in the descriptor set. This is an important distinction to keep in mind as it's easy to mess up your index values and the resulting errors can be confusing and hard to diagnose.
 
-Lastly, let's look at `f_color = vec4(subpassLoad(u_color).rgb, 1.0);`
+Next, let's look at `f_color = vec4(subpassLoad(u_color).rgb, 1.0);`
 
 Since we can't just use our input uniforms as a regular variable, we need to use the special `subpassLoad` function to get data from them. The `.rgb` at the end is just a way of destructuring the vector and is the same as calling `.xyz`. The reason we use `.rgb` is that it helps underscore the fact that this is color data.
+
+Lastly, the unused normal value prevents the GLSL compiler from optimizing out the binding. Without this line of code, the Rust code will fail to create a GraphicsPipeline due to a `DescriptorSetUpdateError(InvalidBinding { binding: 1 })` error. We're going to revisit this later and replace it with our upgraded lighting algorithm, but for now, it's left out for simplicity.
 
 Let's add back in the sub-buffers we commented out earlier in the lesson.
 ```rust
